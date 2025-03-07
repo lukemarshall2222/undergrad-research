@@ -1,7 +1,6 @@
 (*
  * Main entry point and implementation for simple header-dump operation
  *)
-open Pcap
 open Printf
 
 open Utils
@@ -250,24 +249,34 @@ let q4 (next_op: operator) : operator =
     @=> create_groupby_operator (filter_groups ["ipv4.dst"]) counter "pkts"
     @=> next_op
         
-let curr_queries: operator list = [ident (dump_as_csv stdout)]
+let queries: operator list = [ident (dump_as_csv stdout)]
 
-let process_file (filename: string) (queries: operator list) =
-    let (h (* modle HDR *)), (buf: Cstruct.t) = read_header filename in
-    let module H = (val h: Pcap.HDR) in
-    let (header: Cstruct.t), (body: Cstruct.t) = 
-            Cstruct.split buf sizeof_pcap_header in
-    let network: int = Int32.to_int (H.get_pcap_header_network header) in
-    Cstruct.fold (fun _ (hdr, pkt) ->
-        match (parse_pkt network h hdr pkt) with
-        | Some (tup: tuple) -> List.iter (fun q -> q.next tup) queries
-        | None -> ()
-    ) (Pcap.packets h body) ()
+let run_queries () = 
+    List.map (fun (tup: tuple) -> 
+        List.iter (fun q -> q.next tup) queries)
+        (List.init 20 (fun (i: int) ->
+            Tuple.empty
+            |> Tuple.add "time" (Float (0.000000 +. (float)i))
+
+            |> Tuple.add "eth.src" (MAC (Bytes.of_string 
+                                                    "\x00\x11\x22\x33\x44\x55"))
+            |> Tuple.add "eth.dst" (MAC (Bytes.of_string 
+                                                    "\xAA\xBB\xCC\xDD\xEE\xFF"))
+            |> Tuple.add "eth.ethertype" (Int 0x0800)
+
+            |> Tuple.add "ipv4.hlen" (Int 20)
+            |> Tuple.add "ipv4.proto" (Int 6)
+            |> Tuple.add "ipv4.len" (Int 60)
+            |> Tuple.add "ipv4.src" (IPv4 (Ipaddr.V4.of_string_exn "127.0.0.1"))
+            |> Tuple.add "ipv4.dst" (IPv4 (Ipaddr.V4.of_string_exn "127.0.0.1"))
+
+            |> Tuple.add "l4.sport" (Int 440)
+            |> Tuple.add "l4.dport" (Int 50000)
+            |> Tuple.add "l4.flags" (Int 10))
+        )
 
 (*
  * Main entrypoint
  *)
-let () =
-    if Array.length Sys.argv = 2
-    then process_file Sys.argv.(1) curr_queries
-    else printf "Expected <pcap file path> as argument."
+let () = ignore (run_queries ()) ; printf "Done\n"
+    

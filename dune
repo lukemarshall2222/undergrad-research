@@ -1,0 +1,9 @@
+(executables
+    (names main)
+    (modules builtins utils tups main)
+    (modes (native exe))
+    (ocamlopt_flags (:standard -O3))
+    (promote (until-clean))
+    (libraries pcap-format mmap ipaddr cstruct yojson)
+    (preprocess (pps ppx_cstruct)))
+
