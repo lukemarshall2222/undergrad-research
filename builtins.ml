@@ -90,7 +90,7 @@ let dump_walts_csv (filename: string) : operator =
     }
 (* input is either "0" or and IPv4 address in string format,
 returns corresponding op_result *)
-let get_ip_or_zero input: op_result =
+let get_ip_or_zero (input: string) : op_result =
     match input with 
         | "0" -> Int 0
         | s -> IPv4 (Ipaddr.V4.of_string_exn s)
@@ -103,8 +103,8 @@ let get_ip_or_zero input: op_result =
     otherwise the whole file gets cached in joins *)
 (* reads multiple CSV files, extracts their network flow data, processes it into
 tuples, and applies ops on the extracted data *)
-let read_walts_csv 
-    ?(epoch_id_key="eid") (file_names: string list) (ops: operator list) =
+let read_walts_csv ?(epoch_id_key="eid") (file_names: string list) 
+        (ops: operator list) : unit =
     (* open each CSV file, for scanning, create list of triples: 
         (input_channel (open file), epoch_id, tuples_count)*)
     let inchs_eids_tupcount = List.map (fun (filename: string) -> 
@@ -161,12 +161,12 @@ let read_walts_csv
  * to the out_channel
  *)
 (* tracks how many tuples processed per epoch and logs it to outc *)
-let create_meta_meter ?(static_field:string option = None) (name: string) 
-            (outc: out_channel) (op: operator): operator =
+let create_meta_meter ?(static_field: string option = None) (name: string) 
+            (outc: out_channel) (next_op: operator): operator =
     let epoch_count: int ref = ref 0 in (* # of times reset has been called *)
     let tups_count: int ref = ref 0 in (* # of tuples processed before reset *)
     {
-        next = (fun (tup: tuple) -> incr tups_count ; op.next tup);
+        next = (fun (tup: tuple) -> incr tups_count ; next_op.next tup);
         reset = (fun (tup: tuple) ->
             fprintf outc "%d,%s,%d,%s\n" !epoch_count name !tups_count
                 (match static_field with
@@ -174,7 +174,7 @@ let create_meta_meter ?(static_field:string option = None) (name: string)
                     | None -> "" );
             tups_count := 0;
             incr epoch_count;
-            op.reset tup
+            next_op.reset tup
         );
     }
 
@@ -186,7 +186,7 @@ let create_meta_meter ?(static_field:string option = None) (name: string)
  * Adds epoch id to tuple under key_out
  *)
 let create_epoch_operator (epoch_width: float) (key_out: string) 
-            (op: operator) : operator =
+            (next_op: operator) : operator =
     let epoch_boundary: float ref = ref 0.0 in
     let eid: int ref = ref 0 in
     {
@@ -197,15 +197,15 @@ let create_epoch_operator (epoch_width: float) (key_out: string)
             else if time >= !epoch_boundary
             then ( (* within an epoch, have to calculate which one *)
                 while time >= !epoch_boundary do
-                    op.reset (Tuple.singleton key_out (Int !eid)) ;
+                    next_op.reset (Tuple.singleton key_out (Int !eid)) ;
                     epoch_boundary := !epoch_boundary +. epoch_width ;
                     incr eid
                 done
             ) ;
-            op.next (Tuple.add key_out (Int !eid) tup)
+            next_op.next (Tuple.add key_out (Int !eid) tup)
         ) ;
         reset = fun _ -> ( (* resets the last epoch ID *)
-            op.reset (Tuple.singleton key_out (Int !eid)) ;
+            next_op.reset (Tuple.singleton key_out (Int !eid)) ;
             epoch_boundary := 0.0 ;
             eid := 0
         ) ;
@@ -219,10 +219,10 @@ let create_epoch_operator (epoch_width: float) (key_out: string)
 (* creates a filtering opterator, applying the given operator if this one 
     returns true otherwise returning false *)
 let create_filter_operator (f: (tuple -> bool)) 
-        (op: operator) : operator =
+        (next_op: operator) : operator =
     {
-        next = (fun (tup: tuple) -> if f tup then op.next tup ) ;
-        reset = (fun (tup: tuple) -> op.reset tup) ;
+        next = (fun (tup: tuple) -> if f tup then next_op.next tup ) ;
+        reset = (fun (tup: tuple) -> next_op.reset tup) ;
     }
 
 (*
@@ -263,11 +263,10 @@ let get_mapped_float (key: string) (tup: tuple) : float =
  *)
  (* applies the given operator to the result of this operator applied to the 
  Tuple *)
-let map (f: (tuple) -> (tuple)) 
-            (op: operator) : operator =
+let create_map_operator (f: (tuple) -> (tuple)) (next_op: operator) : operator =
     {
-        next = (fun (tup: tuple) -> op.next (f tup)) ;
-        reset = (fun p -> op.reset p) ;
+        next = (fun (tup: tuple) -> next_op.next (f tup)) ;
+        reset = (fun (tup: tuple) -> next_op.reset tup) ;
     }
 
 type grouping_func = (tuple) -> (tuple)
@@ -287,7 +286,7 @@ type reduction_func = op_result -> (tuple) -> op_result
  *   (iii) a mapping from out_key to the result of the fold for that group
  *)
 let create_groupby_operator (group_tup: grouping_func) (reduce: reduction_func) 
-                (out_key: string) (op: operator) =
+                (out_key: string) (next_op: operator) : operator =
     let h_tbl: ((tuple, op_result) Hashtbl.t) = 
                 Hashtbl.create init_table_size in
     let reset_counter: int ref = ref 0 in
@@ -312,9 +311,9 @@ let create_groupby_operator (group_tup: grouping_func) (reduce: reduction_func)
                 (* iterate over hashtable, !!! MORE info needed to figure this out *)
                 let unioned_tup: tuple = 
                         Tuple.union (fun _ a _ -> Some a) tup grouping_key in
-                op.next (Tuple.add out_key val_ unioned_tup)
+                next_op.next (Tuple.add out_key val_ unioned_tup)
             ) h_tbl ;
-            op.reset tup ; (* reset the next operator in line and clear the 
+            next_op.reset tup ; (* reset the next operator in line and clear the 
                                 hash table *)
             Hashtbl.clear h_tbl
         ) ;
@@ -357,7 +356,7 @@ let counter (val_: op_result) (_: tuple) : op_result =
  *
  * Reduction function (f) to sum values (assumed to be Int ()) of a given field
  *)
-let sum_vals (search_key: string) (init_val: op_result) 
+let sum_ints (search_key: string) (init_val: op_result) 
                 (tup: tuple) : op_result =
     match init_val with
         | Empty -> Int 0 (* empty init val, need to init the val to 0 *)
@@ -366,7 +365,8 @@ let sum_vals (search_key: string) (init_val: op_result)
                 | Some (Int n) -> Int (n + i) (* set its val to the sum of the 
                 the given and current value if found else report failure *)
                 | _ -> raise ( Failure (sprintf 
-                               "'sum' failed to find integer value for \"%s\"" 
+                               "'sum_vals' function failed to find integer 
+                               value mapped to \"%s\"" 
                                search_key)
                              )
         )
@@ -379,7 +379,7 @@ let sum_vals (search_key: string) (init_val: op_result)
  * removes duplicate Tuples based on group_tup
  *)
 let create_distinct_operator (group_tup: grouping_func) 
-        (op: operator) : operator =
+        (next_op: operator) : operator =
     let h_tbl: (tuple, bool) Hashtbl.t = Hashtbl.create 
                                                     init_table_size in
     let reset_counter: int ref = ref 0 in
@@ -391,10 +391,10 @@ let create_distinct_operator (group_tup: grouping_func)
         reset = (fun (tup: tuple) ->
             reset_counter := !reset_counter + 1 ;
             Hashtbl.iter (fun (key_: tuple) _ ->
-                let merged_tup = Tuple.union (fun _ a _ -> Some a) tup key_ in
-                op.next merged_tup
+                let merged_tup: tuple = Tuple.union (fun _ a _ -> Some a) tup key_ in
+                next_op.next merged_tup
             ) h_tbl ;
-            op.reset tup ;
+            next_op.reset tup ;
             Hashtbl.clear h_tbl
         ) ;
     }
@@ -427,7 +427,8 @@ type key_extractor = tuple -> (tuple * tuple)
  *)
 let create_join_operator ?(eid_key: string="eid") 
             (left_extractor : key_extractor) 
-            (right_extractor : key_extractor) (op: operator) =
+            (right_extractor : key_extractor) (next_op: operator) 
+            : (operator*operator) =
     let (h_tbl1: (tuple, tuple) Hashtbl.t) = Hashtbl.create init_table_size in
     let (h_tbl2: (tuple, tuple) Hashtbl.t) = Hashtbl.create init_table_size in
     let left_curr_epoch: int ref = ref 0 in
@@ -445,7 +446,7 @@ let create_join_operator ?(eid_key: string="eid")
 
                 while cur_e > !curr_epoch_ref do
                     if !other_epoch_ref > !curr_epoch_ref 
-                    then op.reset (Tuple.singleton eid_key 
+                    then next_op.reset (Tuple.singleton eid_key 
                             (Int !curr_epoch_ref)) ;
                     curr_epoch_ref := !curr_epoch_ref + 1
                 done ;
@@ -454,7 +455,7 @@ let create_join_operator ?(eid_key: string="eid")
                     | Some (val_: tuple) -> (
                         let use_left = fun _ a _ -> Some a in
                         Hashtbl.remove other_h_tbl new_tup ;
-                        op.next (Tuple.union use_left new_tup 
+                        next_op.next (Tuple.union use_left new_tup 
                                     (Tuple.union use_left vals_ val_)) ;
                     )
                     | None -> (
@@ -465,7 +466,7 @@ let create_join_operator ?(eid_key: string="eid")
                 let cur_e: int = get_mapped_int eid_key tup in
                 while cur_e > !curr_epoch_ref do
                     if !other_epoch_ref > !curr_epoch_ref 
-                    then op.reset 
+                    then next_op.reset 
                             (Tuple.singleton eid_key (Int !curr_epoch_ref)) ;
                     curr_epoch_ref := !curr_epoch_ref + 1
                 done
@@ -487,7 +488,7 @@ let create_join_operator ?(eid_key: string="eid")
  * Use in conjunction with the join implementation above to get the "join left 
  * with right on left.x = right.y" kind of thing
  *)
-let rename_keys (renamings_pairs: (string * string) list) 
+let rename_filtered_keys (renamings_pairs: (string * string) list) 
             (in_tup: tuple) : tuple =
     List.fold_left (fun (new_tup: tuple) 
                         ((old_key: string), (new_key: string)) ->

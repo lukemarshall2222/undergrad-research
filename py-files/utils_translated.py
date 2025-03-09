@@ -1,26 +1,20 @@
 
-from typing import Optional, Iterator, TextIO, ItemsView
+from typing import Iterator, TextIO, ItemsView, Callable
 from abc import ABC
-from enum import Enum
 from dataclasses import dataclass
 from ipaddress import IPv4Address
 from collections import deque
-from construct import Struct, Bytes, Int16ub, Int8ub, Int32ub
-import struct
+from functools import partial
 
-
-
-
-class res_kind(Enum):
+@dataclass
+class Op_result(ABC):
     FLOAT = "Float"
     INT = "int"
     IPV4 = "IPv4"
     MAC = "MAC"
     Empty = None
 
-@dataclass
-class Op_result(ABC):
-    def __init__(self, kind: res_kind, val: float | int | IPv4Address | bytearray | None=None):
+    def __init__(self, kind: str | None, val: float | int | IPv4Address | bytearray | None=None):
         self.kind = kind
         self.val = val
 
@@ -48,38 +42,61 @@ class Packet:
     
     def items(self) -> ItemsView[str, Op_result]:
         return self.data.items()
+    
+    def __hash__(self):
+        return hash(frozenset(self.data.items()))
+    
+    def __or__(self, other: 'Packet') -> 'Packet':
+        if not isinstance(other, Packet):
+            raise TypeError("Packets may only be unioned with other Packets.")
+        return Packet(self.data.__or__(other.data))
+    
+    def get(self, key: str, default=None):
+        if not isinstance(key, str):
+            raise TypeError("Packet keys may only be strings.")
+        return self.data.get(key, default)
+    
+    def get_mapped_int(self, key: str) -> int:
+        if not isinstance(key, str):
+            raise TypeError("Packet keys may only be strings.")
+        return int_of_op_result(self.data[key])
+    
+    def get_mapped_float(self, key: str) -> float:
+        if not isinstance(key, str):
+            raise TypeError("Packet keys may only be strings.")
+        return float_of_op_result(self.data[key])
 
 
 class Operator(ABC):
-    def __init__(self, next: callable[[Packet], None], 
-                 reset: callable[[Packet], None]):
+    def __init__(self, next: Callable[[Packet], None], 
+                 reset: Callable[[Packet], None]):
         self.next = next
         self.reset = reset
-    def next(tup: Packet) -> None:
+    def next(packet: Packet) -> None:
         raise NotImplementedError("next method not implemented in base class.")
-    def reset(tup: Packet) -> None:
+    def reset(packet: Packet) -> None:
         raise NotImplementedError("reset method not implemented in base class.")
 
 class Op_to_op:
-    def __init__(self, func: callable[Operator, Operator]):
-        self.func = func
+    def __init__(self, func: Callable[[any], Operator], *args):
+        self.func = partial(func, *args)
     def __rshift__(self, op: Operator) -> Operator:
         if not isinstance(op, Operator):
-            raise TypeError(f"Can only apply an operator 
+            raise TypeError(f"Can only apply an operator \
                                 argument to an Op_to_op.")
         return self.func(op)
 
 class Op_to_op_tup(Op_to_op):
-    def __init__(self, func: callable[Operator, Operator]):
-        super().__init__(func)
+    def __init__(self, func: Callable[[any], Operator], *args):
+        super().__init__(func, args)
     def __rshift__(self, op: Operator) -> tuple[Operator, Operator]:
         if not isinstance(op, Operator):
-            raise TypeError(f"Can only apply an operator 
-                                argument to an Op_to_op.")
+            raise TypeError(f"Can only apply an operator \
+                                argument to an Op_to_op_tup.")
         return self.func(op)
 
 def string_of_mac(buf: bytearray) -> str:
-    return f"{buf[0]: .2f}:{buf[1]: .2f}:{buf[3]: .2f}:
+    return f"{buf[0]: .2f}:{buf[1]: .2f}:{buf[3]: .2f}:\
                 {buf[4]: .2f}:{buf[5]: .2f}"
 
 def tcp_flags_to_strings(flags: int) -> str:
@@ -95,25 +112,25 @@ def tcp_flags_to_strings(flags: int) -> str:
 
 def int_of_op_result(input: Op_result) -> int:
     match input.kind:
-        case res_kind.INT: return input.val
+        case Op_result.INT: return input.val
         case _:
             raise TypeError("Trying to extract int from non-int result")
 
 def float_of_op_result(input: Op_result) -> float:
     match input.kind:
-        case res_kind.FLOAT: return input.val
+        case Op_result.FLOAT: return input.val
         case _:
             raise TypeError("Trying to extract float from non-float result")
         
 def string_of_op_result(input: Op_result) -> str:
     match input.kind:
-        case res_kind.FLOAT | res_kind.INT:
+        case Op_result.FLOAT | Op_result.INT:
             return f"{input.val}"
-        case res_kind.IPV4:
+        case Op_result.IPV4:
             return str(IPv4Address(input.val))
-        case res_kind.MAC:
+        case Op_result.MAC:
             return string_of_mac(input.val)
-        case res_kind.Empty:
+        case Op_result.Empty:
             "Empty"
         case _:
             raise RuntimeError("Reached unreachable code")
@@ -134,91 +151,3 @@ def lookup_int(key: str, packet: Packet) -> int:
 def lookup_float(key: str, packet: Packet) -> float:
     return float_of_op_result(packet[key])
 
-ethernet: Struct = Struct(
-    "dst" / Bytes(6),
-    "src" / Bytes(6),
-    "ethertype" / Int16ub,
-)
-
-ipv4: Struct = Struct(
-    "hlen_version" / Int8ub,
-    "tos" / Int8ub,
-    "len" / Int16ub,
-    "id" / Int16ub,
-    "off" / Int16ub,
-    "ttl" / Int8ub,
-    "proto" / Int8ub,
-    "csum" / Int16ub,
-    "src" / Int32ub,
-    "dst" / Int32ub,
-)
-
-tcp: Struct = Struct(
-    "src_port" / Int16ub,
-    "dst_port" / Int16ub,
-    "seqnum" / Int32ub,
-    "acknum" / Int32ub,
-    "offset_flags" / Int16ub,
-    "window" / Int16ub,
-    "checksum" / Int16ub,
-    "urg" / Int16ub,
-)
-
-udp: Struct = Struct(
-    "src_port" / Int16ub,
-    "dst_port" / Int16ub,
-    "length" / Int16ub,
-    "checksum" / Int16ub,
-)
-
-def parse_ethernet(eth_struct: Struct, data: bytes, packet: Packet) -> Packet:
-    dst, src, ethertype = eth_struct.parse(data).values()
-    packet["eth.src"] = Op_result(res_kind.MAC, src)
-    packet["eth.dst"] = Op_result(res_kind.MAC, dst)
-    packet["eth.ethertype"] = Op_result(res_kind.INT, ethertype)
-    return packet
-
-def parse_ipv4(ipv4_struct: Struct, data: bytes, packet: Packet) -> Packet:
-    hlen, proto, len, src, dst = ipv4_struct.parse(data).values()
-    packet["ipv4.hlen"] = Op_result(res_kind.INT, hlen)
-    packet["ipv4.proto"] = Op_result(res_kind.INT, proto)
-    packet["ipv4.len"] = Op_result(res_kind.INT, len)
-    packet["ipv4.src"] = Op_result(res_kind.IPV4, src)
-    packet["ipv4.dst"] = Op_result(res_kind.IPV4, dst)
-    return packet
-
-def parse_tcp(tcp_struct: Struct, data: bytes, packet: Packet) -> Packet:
-    src_port, dst_port, offset_flags = tcp_struct.parse(data).values()
-    packet["l4.sport"] = Op_result(res_kind.INT, src_port)
-    packet["l4.dport"] = Op_result(res_kind.INT, dst_port)
-    packet["l4.flags"] = Op_result(res_kind.INT, offset_flags & 0xFF)
-    return packet
-
-def parse_udp(udp_struct: Struct, data: bytes, packet: Packet) -> Packet:
-    src_port, dst_port = udp_struct.parse(data).values()
-    packet["l4.sport"] = Op_result(res_kind.INT, src_port)    
-    packet["l4.dport"] = Op_result(res_kind.INT, dst_port)
-    packet["l4.flags"] = Op_result(res_kind.INT, 0)
-    return packet
-
-def set_default_l4_fields(packet: Packet) -> Packet:
-    packet["l4.sport"] = Op_result(res_kind.INT, 0)    
-    packet["l4.dport"] = Op_result(res_kind.INT, 0)
-    packet["l4.flags"] = Op_result(res_kind.INT, 0)
-    return packet
-
-def get_ip_version(eth_struct: bytearray, offset: int) -> int:
-    return (eth_struct[offset] & 0xF0) >> 4
-
-def parse_pkt(network: int, pcap_header, metadata: Struct, payload: Struct):
-    new_packet: Packet = Packet()
-    ts_sec, ts_usec = struct.unpack("=II", metadata)
-    new_packet["time"] = Op_result(res_kind.FLOAT, (float(ts_sec) + float(ts_usec) / 1000000))
-
-    def helper(packet_metadata: Packet, offset: int):
-        match network:
-            case 1:
-                parse_ethernet(payload, time_metadata)
-
-    return
-                    

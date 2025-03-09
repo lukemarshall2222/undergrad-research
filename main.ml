@@ -11,7 +11,7 @@ open Builtins
 
 (* counts total number of packets obeserved in an epoch *)
 let ident (next_op: operator) : operator = 
-    (map (fun (tup: tuple) -> Tuple.filter 
+    (create_map_operator (fun (tup: tuple) -> Tuple.filter 
         (fun (key_: string) _ -> not 
             (String.equal key_ "eth.src" || String.equal key_ "eth.dst")) tup))
     @=> next_op
@@ -44,8 +44,8 @@ let tcp_new_cons (next_op: operator) : operator =
     let threshold: int = 40 in
     (create_epoch_operator 1.0 "eid")
     @=> (create_filter_operator (fun (tup: tuple)->
-                    (get_mapped_int "ipv4.proto"tup) = 6 &&
-                    (get_mapped_int "l4.flags"tup) = 2))
+                    (get_mapped_int "ipv4.proto" tup) = 6 &&
+                    (get_mapped_int "l4.flags" tup) = 2))
     @=> (create_groupby_operator (filter_groups ["ipv4.dst"]) counter "cons")
     @=> (create_filter_operator (key_geq_int "cons" threshold))
     @=> next_op
@@ -55,8 +55,8 @@ let ssh_brute_force (next_op: operator) : operator =
     let threshold: int = 40 in
     (create_epoch_operator 1.0 "eid") (* might need to elongate epoch for this one... *)
     @=> (create_filter_operator (fun (tup: tuple)->
-                    (get_mapped_int "ipv4.proto"tup) = 6 &&
-                    (get_mapped_int "l4.dport"tup) = 22))
+                    (get_mapped_int "ipv4.proto" tup) = 6 &&
+                    (get_mapped_int "l4.dport" tup) = 22))
     @=> (create_distinct_operator (filter_groups 
                 ["ipv4.src" ; "ipv4.dst" ; "ipv4.len"]))
     @=> (create_groupby_operator (filter_groups 
@@ -96,86 +96,86 @@ let ddos (next_op: operator) : operator =
 let syn_flood_sonata (next_op: operator) : operator list =
     let threshold: int = 3 in
     let epoch_dur: float = 1.0 in
-    let syns (k': operator) : operator =
+    let syns (next_op: operator) : operator =
         (create_epoch_operator epoch_dur "eid")
         @=> (create_filter_operator (fun (tup: tuple) ->
                         (get_mapped_int "ipv4.proto" tup) = 6 &&
                         (get_mapped_int "l4.flags" tup) = 2))
         @=> (create_groupby_operator (filter_groups ["ipv4.dst"]) 
                                         counter "syns")
-        @=> k'
-    in let synacks (k': operator) : operator =
+        @=> next_op
+    in let synacks (next_op: operator) : operator =
         (create_epoch_operator epoch_dur "eid")
         @=> (create_filter_operator (fun (tup: tuple) ->
                         (get_mapped_int "ipv4.proto" tup) = 6 &&
                         (get_mapped_int "l4.flags" tup) = 18))  
         @=> (create_groupby_operator (filter_groups ["ipv4.src"]) 
                                         counter "synacks")
-        @=> k'
-    in let acks (k': operator) : operator =
+        @=> next_op
+    in let acks (next_op: operator) : operator =
         (create_epoch_operator epoch_dur "eid")
         @=> (create_filter_operator (fun (tup: tuple)->
                         (get_mapped_int "ipv4.proto" tup) = 6 &&
                         (get_mapped_int "l4.flags" tup) = 16))
         @=> (create_groupby_operator (filter_groups ["ipv4.dst"]) 
                                         counter "acks")
-        @=> k'
-    in let (j1: operator), (o3: operator) =
+        @=> next_op
+    in let (join_op1: operator), (join_op2: operator) =
         (create_join_operator
             (fun (tup: tuple)-> ((filter_groups ["host"] tup), 
                         (filter_groups ["syns+synacks"] tup)))
-            (fun (tup: tuple)-> ((rename_keys [("ipv4.dst","host")] tup), 
+            (fun (tup: tuple)-> ((rename_filtered_keys [("ipv4.dst","host")] tup), 
                         (filter_groups ["acks"] tup))))
-        @==> (map (fun (tup: tuple)-> Tuple.add "syns+synacks-acks" 
+        @==> (create_map_operator (fun (tup: tuple)-> Tuple.add "syns+synacks-acks" 
                     (Int ((get_mapped_int "syns+synacks" tup) - 
                     (get_mapped_int "acks" tup))) tup))
         @=> (create_filter_operator (key_geq_int "syns+synacks-acks" threshold))
         @=> next_op
-    in let (o1: operator), (o2: operator) = 
+    in let (join_op3: operator), (join_op4: operator) = 
         (create_join_operator
-            (fun (tup: tuple)-> ((rename_keys [("ipv4.dst","host")] tup), 
+            (fun (tup: tuple)-> ((rename_filtered_keys [("ipv4.dst","host")] tup), 
                         (filter_groups ["syns"] tup)))
-            (fun (tup: tuple)-> ((rename_keys [("ipv4.src","host")] tup), 
+            (fun (tup: tuple)-> ((rename_filtered_keys [("ipv4.src","host")] tup), 
                         (filter_groups ["synacks"] tup))))
-        @==> (map (fun (tup: tuple)-> Tuple.add "syns+synacks" 
+        @==> (create_map_operator (fun (tup: tuple)-> Tuple.add "syns+synacks" 
                     (Int ((get_mapped_int "syns" tup) + 
                     (get_mapped_int "synacks" tup))) tup))
-        @=> j1
-    in [syns @=> o1 ; synacks @=> o2 ; acks @=> o3]
+        @=> join_op1
+    in [syns @=> join_op3 ; synacks @=> join_op4 ; acks @=> join_op2]
     
 
 (* Sonata 7 *)
 let completed_flows (next_op: operator) : operator list =
     let threshold: int = 1 in
     let epoch_dur: float = 30.0 in
-    let syns (k': operator) : operator=
+    let syns (next_op: operator) : operator=
         (create_epoch_operator epoch_dur "eid")
         @=> (create_filter_operator (fun (tup: tuple)->
                         (get_mapped_int "ipv4.proto" tup) = 6 &&
                         (get_mapped_int "l4.flags" tup) = 2))
         @=> (create_groupby_operator (filter_groups ["ipv4.dst"]) 
                                         counter "syns")
-        @=> k'
-    in let fins (k': operator) : operator=
+        @=> next_op
+    in let fins (next_op: operator) : operator=
         (create_epoch_operator epoch_dur "eid")
         @=> (create_filter_operator (fun (tup: tuple) ->
                         (get_mapped_int "ipv4.proto" tup) = 6 &&
                         ((get_mapped_int "l4.flags" tup) land 1) = 1))
         @=> (create_groupby_operator (filter_groups ["ipv4.src"]) 
                                         counter "fins")
-        @=> k'
-    in let (o1: operator), (o2: operator) =
+        @=> next_op
+    in let (op1: operator), (op2: operator) =
         (create_join_operator
-            (fun (tup: tuple) -> ((rename_keys [("ipv4.dst","host")] tup), 
+            (fun (tup: tuple) -> ((rename_filtered_keys [("ipv4.dst","host")] tup), 
                         (filter_groups ["syns"] tup)))
-            (fun (tup: tuple) -> ((rename_keys [("ipv4.src","host")] tup), 
+            (fun (tup: tuple) -> ((rename_filtered_keys [("ipv4.src","host")] tup), 
                         (filter_groups ["fins"] tup))))
-        @==> (map (fun (tup: tuple) -> Tuple.add "diff" 
+        @==> (create_map_operator (fun (tup: tuple) -> Tuple.add "diff" 
                     (Int ((get_mapped_int "syns" tup) - 
                     (get_mapped_int "fins" tup))) tup))
         @=> (create_filter_operator (key_geq_int "diff" threshold))
         @=> next_op
-    in [syns @=> o1 ; fins @=> o2]
+    in [syns @=> op1 ; fins @=> op2]
 
 (* Sonata 8 *)
 let slowloris (next_op: operator) : operator list =
@@ -183,7 +183,7 @@ let slowloris (next_op: operator) : operator list =
     let t2: int = 500 in
     let t3: int = 90 in
     let epoch_dur: float = 1.0 in
-    let n_conns (k': operator) : operator=
+    let n_conns (next_op: operator) : operator=
         (create_epoch_operator epoch_dur "eid")
         @=> (create_filter_operator (fun (tup: tuple) -> 
                         (get_mapped_int "ipv4.proto" tup) = 6))
@@ -192,52 +192,52 @@ let slowloris (next_op: operator) : operator list =
         @=> (create_groupby_operator (filter_groups ["ipv4.dst"]) counter "n_conns")
         @=> (create_filter_operator (fun (tup: tuple) -> 
                         (get_mapped_int "n_conns" tup) >= t1))
-        @=> k'
-    in let n_bytes (k': operator) : operator=
+        @=> next_op
+    in let n_bytes (next_op: operator) : operator=
         (create_epoch_operator epoch_dur "eid")
         @=> (create_filter_operator (fun (tup: tuple) -> 
                         (get_mapped_int "ipv4.proto" tup) = 6))
         @=> (create_groupby_operator (filter_groups ["ipv4.dst"]) 
-                                        (sum_vals "ipv4.len") "n_bytes")
+                                        (sum_ints "ipv4.len") "n_bytes")
         @=> (create_filter_operator (fun (tup: tuple) -> 
                         (get_mapped_int "n_bytes" tup) >= t2))
-        @=> k'
-    in let o1, o2 =
+        @=> next_op
+    in let op1, op2 =
         (create_join_operator
             (fun (tup: tuple) -> (filter_groups ["ipv4.dst"] tup, 
                         filter_groups ["n_conns"] tup))
             (fun (tup: tuple) -> (filter_groups ["ipv4.dst"] tup, 
                         filter_groups ["n_bytes"] tup)))
-        @==> (map (fun (tup: tuple) -> Tuple.add "bytes_per_conn" 
+        @==> (create_map_operator (fun (tup: tuple) -> Tuple.add "bytes_per_conn" 
                     (Int ((get_mapped_int "n_bytes" tup) / 
                     (get_mapped_int "n_conns" tup))) tup))
         @=> (create_filter_operator (fun (tup: tuple) -> 
                         (get_mapped_int "bytes_per_conn" tup) <= t3))
         @=> next_op
-    in [n_conns @=> o1 ; n_bytes @=> o2]
+    in [n_conns @=> op1 ; n_bytes @=> op2]
 
 let create_join_operator_test (next_op: operator) : operator list =
-    let epoch_dur = 1.0 in
-    let syns (k': operator) : operator=
+    let epoch_dur: float = 1.0 in
+    let syns (next_op: operator) : operator=
         (create_epoch_operator epoch_dur "eid")
         @=> (create_filter_operator (fun (tup: tuple) ->
                         (get_mapped_int "ipv4.proto" tup) = 6 &&
                         (get_mapped_int "l4.flags" tup) = 2))
-        @=> k'
-    in let synacks (k': operator) : operator=
+        @=> next_op
+    in let synacks (next_op: operator) : operator=
         (create_epoch_operator epoch_dur "eid")
         @=> (create_filter_operator (fun (tup: tuple) ->
                         (get_mapped_int "ipv4.proto" tup) = 6 &&
                         (get_mapped_int "l4.flags" tup) = 18))
-        @=> k'
-    in let o1, o2 =
+        @=> next_op
+    in let op1, op2 =
         (create_join_operator
-            (fun (tup: tuple) -> ((rename_keys [("ipv4.src","host")] tup), 
-                        (rename_keys [("ipv4.dst","remote")] tup)))
-            (fun (tup: tuple) -> ((rename_keys [("ipv4.dst","host")] tup), 
+            (fun (tup: tuple) -> ((rename_filtered_keys [("ipv4.src","host")] tup), 
+                        (rename_filtered_keys [("ipv4.dst","remote")] tup)))
+            (fun (tup: tuple) -> ((rename_filtered_keys [("ipv4.dst","host")] tup), 
                         (filter_groups ["time"] tup))))
         @==> next_op
-    in [syns @=> o1 ; synacks @=> o2]
+    in [syns @=> op1 ; synacks @=> op2]
 
 let q3 (next_op: operator) : operator =
     (create_epoch_operator 100.0 "eid")
@@ -253,7 +253,7 @@ let queries: operator list = [ident (dump_as_csv stdout)]
 
 let run_queries () = 
     List.map (fun (tup: tuple) -> 
-        List.iter (fun q -> q.next tup) queries)
+        List.iter (fun (query: operator) -> query.next tup) queries)
         (List.init 20 (fun (i: int) ->
             Tuple.empty
             |> Tuple.add "time" (Float (0.000000 +. (float)i))

@@ -1,6 +1,6 @@
 (executables
     (names main)
-    (modules builtins utils tups main)
+    (modules builtins utils main)
     (modes (native exe))
     (ocamlopt_flags (:standard -O3))
     (promote (until-clean))
