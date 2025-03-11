@@ -31,17 +31,23 @@ type operator = { (* record type *)
                                 processing *)
 }
 
+type op_creator = operator -> operator
+type dbl_op_creator = operator -> (operator * operator)
+
 (*
  * Right associative "chaining" operator
  * for passing output of one operator to the next under cps-style operator constructors
  *)
-let ( @=> ) (o:operator->operator) (o':operator): operator = o o'
+let ( @=> ) (op_creator_func: op_creator) (next_op: operator) 
+        : operator 
+    = op_creator_func next_op
 (* e.g. 
     (epoch 1.0 "eid") @=> (groupby single_group count "pkts") @=> k 
 instead of: 
     k (groupby single_group count "pkts" (epoch 1.0 "eid")) *)
-let ( @==> ) (o:operator->(operator*operator)) (o':operator) : 
-            (operator * operator)= o o'
+
+let ( @==> ) (op_creator_func: dbl_op_creator) (op: operator) : 
+            (operator * operator) = op_creator_func op
 
 
 
@@ -53,7 +59,12 @@ let ( @==> ) (o:operator->(operator*operator)) (o':operator) :
 let string_of_mac (buf: Bytes.t) : string =
     let byte_at index: int = Bytes.get_uint8 buf index in
     sprintf "%.2x:%.2x:%.2x:%.2x:%.2x:%.2x"
-        (byte_at 0) (byte_at 1) (byte_at 2) (byte_at 3) (byte_at 4) (byte_at 5)
+            (byte_at 0) 
+            (byte_at 1) 
+            (byte_at 2) 
+            (byte_at 3) 
+            (byte_at 4) 
+            (byte_at 5)
 
 (* converts TCP flags into a human-readable string representation by matching
 flags to formatted output *)
@@ -71,7 +82,6 @@ let tcp_flags_to_strings (flags: int) : string =
             ("URG", 1 lsl 5);
             ("ECE", 1 lsl 6);
             ("CWR", 1 lsl 7);
-    (* maps *)
     ]) in TCPFlagsMap.(
         fold (fun (key: string) (_val: int) (acc: string) -> 
             if acc = "" 

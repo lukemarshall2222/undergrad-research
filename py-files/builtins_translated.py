@@ -208,6 +208,7 @@ def create_distinct_operator(group_packet: grouping_func, next_op: Operator) -> 
     reset_counter: int = 0
 
     def next(packet: Packet) -> None:
+        # assert(isinstance(packet.data, dict))
         grouping_key: Packet = group_packet(packet)
         h_tbl[grouping_key] = True
 

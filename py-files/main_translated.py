@@ -15,78 +15,78 @@ def ident(next_op: Operator) -> Operator:
 def count_pkts(next_op: Operator) -> Operator:
     return \
     Op_to_op(create_epoch_operator, 1.0, "eid") \
-    >> Op_to_op(create_groupby_operator, single_group, counter, "pkts") \
-    >> next_op
+    >> (Op_to_op(create_groupby_operator, single_group, counter, "pkts") \
+    >> next_op)
 
 def pkts_per_src_dst(next_op: Operator) -> Operator:
     return \
     Op_to_op(create_epoch_operator, 1.0, "eid") \
-    >> Op_to_op(create_groupby_operator,
+    >> (Op_to_op(create_groupby_operator,
             partial(filter_groups, ["ipv4.src", "ipv4.dst"]), 
             counter, "pkts") \
-    >> next_op
+    >> next_op)
 
 def distinct_srcs(next_op: Operator) -> Operator:
     return \
     Op_to_op(create_epoch_operator, 1.0, "eid") \
-    >> Op_to_op(create_distinct_operator, 
+    >> (Op_to_op(create_distinct_operator, 
                 partial(filter_groups, ["ipv4.src"])) \
-    >> Op_to_op(create_groupby_operator, single_group, counter, "srcs") \
-    >> next_op
+    >> (Op_to_op(create_groupby_operator, single_group, counter, "srcs") \
+    >> next_op))
 
 def tcp_new_cons(next_op: Operator) -> Operator:
     threshold: int = 40
 
     return \
     Op_to_op(create_epoch_operator, 1.0, "eid") \
-    >> Op_to_op(create_filter_operator, partial(filter_helper, 6, 2)) \
-    >> Op_to_op(create_groupby_operator, 
+    >> (Op_to_op(create_filter_operator, partial(filter_helper, 6, 2)) \
+    >> (Op_to_op(create_groupby_operator, 
                 partial(filter_groups, ["ipv4.dst"]), 
                 counter, "cons") \
-    >> Op_to_op(create_filter_operator, 
+    >> (Op_to_op(create_filter_operator, 
                 partial(key_geq_int, "cons", threshold)) \
-    >> next_op
+    >> next_op)))
 
 def ssh_brute_force(next_op: Operator) -> Operator:
     threshold: int = 40
 
     return \
     Op_to_op(create_epoch_operator, 1.0, "eid") \
-    >> Op_to_op(create_filter_operator, partial(filter_helper, 6, 22)) \
-    >> Op_to_op(create_filter_operator, 
+    >> (Op_to_op(create_filter_operator, partial(filter_helper, 6, 22)) \
+    >> (Op_to_op(create_filter_operator, 
                 partial(filter_groups, 
                 ["ipv4.src", "ipv4.dst", "ipv4.len"])) \
-    >> Op_to_op(create_groupby_operator, 
+    >> (Op_to_op(create_groupby_operator, 
                 partial(filter_groups, ["ipv4.dst", "ipv4.len"]),
                 counter, "srcs") \
-    >> Op_to_op(create_filter_operator, 
+    >> (Op_to_op(create_filter_operator, 
                 partial(key_geq_int, "srcs", threshold)) \
-    >> next_op
+    >> next_op))))
     
 
 def super_spreader(next_op: Operator) -> Operator:
     threshold: int = 40
     return \
     Op_to_op(create_epoch_operator, 1.0, "eid") \
-    >> Op_to_op(create_distinct_operator, 
+    >> (Op_to_op(create_distinct_operator, 
                 partial(filter_groups, ["ipv4.src", "l4.dport"])) \
-    >> Op_to_op(create_groupby_operator, 
+    >> (Op_to_op(create_groupby_operator, 
                 partial(filter_groups, ["ipv4.src"]), counter, "ports") \
-    >> Op_to_op(create_filter_operator, 
+    >> (Op_to_op(create_filter_operator, 
                 partial(key_geq_int, "ports", threshold)) \
-    >> next_op
+    >> next_op)))
 
 def ddos(next_op: Operator) -> Operator:
     threshold: int = 45
     return \
     Op_to_op(create_epoch_operator, 1.0, "eid") \
-    >> Op_to_op(create_distinct_operator, 
+    >> (Op_to_op(create_distinct_operator, 
                 partial(filter_groups, ["ipv4.src", "ipv4.dst"])) \
-    >> Op_to_op(create_groupby_operator, 
+    >> (Op_to_op(create_groupby_operator, 
                 partial(filter_groups, ["ipv4.dst"]), counter, "srcs") \
-    >> Op_to_op(create_filter_operator, 
+    >> (Op_to_op(create_filter_operator, 
                 partial(key_geq_int, "srcs", threshold)) \
-    >> next_op
+    >> next_op)))
 
 def syn_flood_sonata(next_op: Operator) -> list[Operator]:
     threshold: int = 3
@@ -95,27 +95,27 @@ def syn_flood_sonata(next_op: Operator) -> list[Operator]:
     def syns(next_op: Operator) -> Operator:
         return \
         Op_to_op(create_epoch_operator, epoch_dur, "eid") \
-        >> Op_to_op(create_filter_operator, partial(filter_helper, 6, 2)) \
-        >> Op_to_op(create_groupby_operator, 
+        >> (Op_to_op(create_filter_operator, partial(filter_helper, 6, 2)) \
+        >> (Op_to_op(create_groupby_operator, 
                     partial(filter_groups, ["ipv4.dst"]), counter, "syns") \
-        >> next_op
+        >> next_op))
     
     def synacks(next_op: Operator) -> Operator:
         return \
         Op_to_op(create_epoch_operator, epoch_dur, "eid") \
-        >> Op_to_op(create_filter_operator, partial(filter_helper, 6, 18)) \
-        >> Op_to_op(create_groupby_operator, 
+        >> (Op_to_op(create_filter_operator, partial(filter_helper, 6, 18)) \
+        >> (Op_to_op(create_groupby_operator, 
                     partial(filter_groups, ["ipv4.dst"]), 
                     counter, "synacks") \
-        >> next_op
+        >> next_op))
     
     def acks(next_op: Operator) -> Operator:
         return \
         Op_to_op(create_epoch_operator, epoch_dur, "eid") \
-        >> Op_to_op(create_filter_operator, partial(filter_groups, 6, 16)) \
-        >> Op_to_op(create_groupby_operator,
+        >> (Op_to_op(create_filter_operator, partial(filter_groups, 6, 16)) \
+        >> (Op_to_op(create_groupby_operator,
                      partial(filter_groups, ["ipv4.dst"]), counter, "acks") \
-        >> next_op
+        >> next_op))
     
     join_ops: tuple[Operator, Operator] = \
         Op_to_op_tup(create_join_operator, 
@@ -125,14 +125,14 @@ def syn_flood_sonata(next_op: Operator) -> list[Operator]:
             lambda packet: 
                 (rename_filtered_keys([("ipv4.dst","host")], packet), 
                  filter_groups(["acks"], packet))) \
-    >> Op_to_op_tup(create_map_operator, 
+    >> (Op_to_op_tup(create_map_operator, 
             lambda packet:
                 packet.__setitem__("syns+synacks-acks", Op_result(Op_result.INT, 
                         packet.get_mapped_int("syns+synacks") - 
                         packet.get_mapped_int("acks")))) \
-    >> Op_to_op(create_filter_operator, 
+    >> (Op_to_op(create_filter_operator, 
                 partial(key_geq_int, "syns+synacks-acks", threshold)) \
-    >> next_op
+    >> next_op))
     join_op1, join_op2 = join_ops
 
     join_ops = \
@@ -143,13 +143,13 @@ def syn_flood_sonata(next_op: Operator) -> list[Operator]:
             lambda packet:
                 (rename_filtered_keys([("ipv4.src","host")], packet), 
                 filter_groups(["synacks"], packet))) \
-        >> Op_to_op(create_map_operator, lambda packet:
+        >> (Op_to_op(create_map_operator, lambda packet:
                 packet.__setitem__
                 ("syns+synacks", 
                 Op_result(Op_result.INT, 
                             packet.get_mapped_int("syns") + 
                             packet.get_mapped_int("synacks")))) \
-        >> join_op1
+        >> join_op1)
     join_op3, join_op4 = join_ops
 
     return [
@@ -165,24 +165,24 @@ def completed_flows(next_op: Operator) -> list[Operator]:
     def syns(next_op: Operator) -> Operator:
         return \
         Op_to_op(create_epoch_operator, epoch_dur, "eid") \
-        >> Op_to_op(create_filter_operator, 
+        >> (Op_to_op(create_filter_operator, 
             partial(filter_helper, 6, 2)) \
-        >> Op_to_op(create_groupby_operator, 
+        >> (Op_to_op(create_groupby_operator, 
             partial(filter_groups, ["ipv4.src"]), 
             counter, "syns") \
-        >> next_op
+        >> next_op))
     
     def fins(next_op: Operator) -> Operator:
         return \
         Op_to_op(create_epoch_operator, epoch_dur, "eid") \
-        >> Op_to_op(create_filter_operator, 
+        >> (Op_to_op(create_filter_operator, 
                     (lambda packet:
                         packet.get_mapped_int("ipv4.proto") == 6 and \
                         (packet.get_mapped_int("l4.flags") & 1) == 1)) \
-        >> Op_to_op(create_groupby_operator, 
+        >> (Op_to_op(create_groupby_operator, 
                     partial(filter_groups, ["ipv4.src"]), 
                     counter, "fins") \
-        >> next_op
+        >> next_op))
 
     operators: tuple[Operator, Operator] = \
         Op_to_op(create_join_operator, 
@@ -192,15 +192,15 @@ def completed_flows(next_op: Operator) -> list[Operator]:
                 (lambda packet:
                     (rename_filtered_keys([("ipv4.src","host")], packet),
                     filter_groups(["fins"], packet)))) \
-        >> Op_to_op_tup(create_map_operator,
+        >> (Op_to_op_tup(create_map_operator,
                     (lambda packet:
                         packet.__setitem__
                         ("diff", Op_result(Op_result.INT, 
                         packet.get_mapped_int("syns") - 
                         packet.get_mapped_int("fins"))))) \
-        >> Op_to_op(create_filter_operator, 
+        >> (Op_to_op(create_filter_operator, 
             partial(key_geq_int, "diff", threshold)) \
-        >> next_op
+        >> next_op))
     op1, op2 = operators
 
     return [
@@ -216,32 +216,32 @@ def slowloris(next_op: Operator) -> list[Operator]:
 
     def n_conns(next_op: Operator) -> Operator:
         Op_to_op(create_epoch_operator, epoch_dur, "eid") \
-        >> Op_to_op(create_filter_operator, 
+        >> (Op_to_op(create_filter_operator, 
                     (lambda packet: 
                         packet.get_mapped_int("ipv4.proto") == 6)) \
-        >> Op_to_op(create_distinct_operator, 
+        >> (Op_to_op(create_distinct_operator, 
                     partial(filter_groups, 
                     ["ipv4.src", "ipv4.dst", "l4.sport"])) \
-        >> Op_to_op(create_groupby_operator, 
+        >> (Op_to_op(create_groupby_operator, 
                     partial(filter_groups, ["ipv4.dst"]), 
                     counter, "n_conns") \
-        >> Op_to_op(create_filter_operator, 
+        >> (Op_to_op(create_filter_operator, 
                     (lambda packet: 
                         packet.get_mapped_int("n_conns") >= t1))\
-        >> next_op
+        >> next_op))))
 
     def n_bytes(next_op: Operator) -> Operator:
         Op_to_op(create_epoch_operator, epoch_dur, "eid") \
-        >> Op_to_op(create_filter_operator, 
+        >> (Op_to_op(create_filter_operator, 
                     (lambda packet: 
                         packet.get_mapped_int("ipv4.proto") == 6)) \
-        >> Op_to_op(create_groupby_operator, 
+        >> (Op_to_op(create_groupby_operator, 
             partial(filter_groups, ["ipv4.dst"]), 
             partial(sum_ints, "ipv4.len"), "n_bytes") \
-        >> Op_to_op(create_filter_operator, 
+        >> (Op_to_op(create_filter_operator, 
                     (lambda packet: 
                         packet.get_mapped_int("n_bytes") >= t2)) \
-        >> next_op
+        >> next_op)))
 
     operators: tuple[Operator, Operator] = \
         Op_to_op(create_join_operator,
@@ -251,16 +251,16 @@ def slowloris(next_op: Operator) -> list[Operator]:
                 (lambda packet:
                     (filter_groups(["ipv4.dst"], packet),
                     filter_groups(["n_bytes"], packet)))) \
-        >> Op_to_op_tup(create_map_operator, 
+        >> (Op_to_op_tup(create_map_operator, 
                         (lambda packet:
                         packet.__setitem__
                         ("bytes_per_conn", Op_result(Op_result.INT, 
                         packet.get_mapped_int("n_bytes") - 
                         packet.get_mapped_int("n_conns"))))) \
-        >> Op_to_op(create_filter_operator,
+        >> (Op_to_op(create_filter_operator,
                     (lambda packet:
                         packet.get_mapped_int("bytes_per_conn") <= t3)) \
-        >> next_op
+        >> next_op))
     op1, op2 = operators
 
     return [
@@ -274,14 +274,14 @@ def create_join_operator_test(next_op: Operator) -> list[Operator]:
     def syns(next_op: Operator) -> Operator:
         return \
         Op_to_op(create_epoch_operator, epoch_dur, "eid") \
-        >> Op_to_op(create_filter_operator, partial(filter_helper, 6, 2)) \
-        >> next_op
+        >> (Op_to_op(create_filter_operator, partial(filter_helper, 6, 2)) \
+        >> next_op)
     
     def synacks(next_op: Operator) -> Operator:
         return \
         Op_to_op(create_epoch_operator, epoch_dur, "eid") \
-        >> Op_to_op(create_filter_operator, partial(filter_helper, 6, 18)) \
-        >> next_op
+        >> (Op_to_op(create_filter_operator, partial(filter_helper, 6, 18)) \
+        >> next_op)
     
     operators: tuple[Operator, Operator] = \
         Op_to_op_tup(create_join_operator,
@@ -299,19 +299,19 @@ def create_join_operator_test(next_op: Operator) -> list[Operator]:
 def q3(next_op: Operator) -> Operator:
     return \
     Op_to_op(create_epoch_operator, 100.0, "eid") \
-    >> Op_to_op(create_distinct_operator, 
+    >> (Op_to_op(create_distinct_operator, 
                 partial(filter_groups, ["ipv4.src", "ipv4.dst"])) \
-    >> next_op
+    >> next_op)
 
 def q4(next_op: Operator) -> Operator:
     return \
     Op_to_op(create_epoch_operator, 10000.0, "eid") \
-    >> Op_to_op(create_groupby_operator, 
+    >> (Op_to_op(create_groupby_operator, 
                 partial(filter_groups, ["ipv4.dst"]), 
                 counter, "pkts") \
-    >> next_op
+    >> next_op)
 
-queries: list[Operator] = [ident(dump_as_csv(sys.stdout))]
+queries: list[Operator] = [(dump_as_csv(sys.stdout))]
 
 def run_queries() -> None:           
     [[query.next(packet) for query in queries] for packet in [Packet({

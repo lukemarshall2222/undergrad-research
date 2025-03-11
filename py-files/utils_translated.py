@@ -1,10 +1,12 @@
 
-from typing import Iterator, TextIO, ItemsView, Callable
+from typing import Iterator, TextIO, ItemsView, Callable, Union
 from abc import ABC
 from dataclasses import dataclass
 from ipaddress import IPv4Address
 from collections import deque
 from functools import partial
+
+type op_result_type = Union[float, int, IPv4Address, bytearray, None]
 
 @dataclass
 class Op_result(ABC):
@@ -14,9 +16,11 @@ class Op_result(ABC):
     MAC = "MAC"
     Empty = None
 
-    def __init__(self, kind: str | None, val: float | int | IPv4Address | bytearray | None=None):
-        self.kind = kind
-        self.val = val
+    kind: Union[str, None]
+    val: op_result_type = None
+
+    def __hash__(self): 
+        return hash((self.kind, self.val))
 
 
 class Packet:
@@ -39,6 +43,7 @@ class Packet:
             raise TypeError("Packet values may only be Op_results.")
         else: 
             self.data[key] = val
+        return self
     
     def items(self) -> ItemsView[str, Op_result]:
         return self.data.items()
