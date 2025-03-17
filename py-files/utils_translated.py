@@ -23,7 +23,7 @@ class Op_result(ABC):
         return hash((self.kind, self.val))
 
 
-class Packet:
+class PacketHeaders:
     def __init__(self, data: dict[str, Op_result] | None=None):
         self.data: dict[str, 'Op_result'] | None = data if data is not None else {}
 
@@ -51,10 +51,10 @@ class Packet:
     def __hash__(self):
         return hash(frozenset(self.data.items()))
     
-    def __or__(self, other: 'Packet') -> 'Packet':
-        if not isinstance(other, Packet):
+    def __or__(self, other: 'PacketHeaders') -> 'PacketHeaders':
+        if not isinstance(other, PacketHeaders):
             raise TypeError("Packets may only be unioned with other Packets.")
-        return Packet(self.data.__or__(other.data))
+        return PacketHeaders(self.data.__or__(other.data))
     
     def get(self, key: str, default=None):
         if not isinstance(key, str):
@@ -73,13 +73,13 @@ class Packet:
 
 
 class Operator(ABC):
-    def __init__(self, next: Callable[[Packet], None], 
-                 reset: Callable[[Packet], None]):
+    def __init__(self, next: Callable[[PacketHeaders], None], 
+                 reset: Callable[[PacketHeaders], None]):
         self.next = next
         self.reset = reset
-    def next(packet: Packet) -> None:
+    def next(packet: PacketHeaders) -> None:
         raise NotImplementedError("next method not implemented in base class.")
-    def reset(packet: Packet) -> None:
+    def reset(packet: PacketHeaders) -> None:
         raise NotImplementedError("reset method not implemented in base class.")
 
 class Op_to_op:
@@ -140,19 +140,19 @@ def string_of_op_result(input: Op_result) -> str:
         case _:
             raise RuntimeError("Reached unreachable code")
         
-def string_of_packet(input_packet: Packet) -> str:
+def string_of_packet(input_packet: PacketHeaders) -> str:
     return "".join(f'"{key}" => {string_of_op_result(val)}, ' 
                    for key, val in input_packet)
         
-def packet_of_list(packet_list: deque[tuple[str, Op_result]]) -> Packet:
-    return Packet({key: val for key, val in list(packet_list)})
+def packet_of_list(packet_list: deque[tuple[str, Op_result]]) -> PacketHeaders:
+    return PacketHeaders({key: val for key, val in list(packet_list)})
 
-def dump_packet(outc: TextIO, packet: Packet) -> None:
+def dump_packet(outc: TextIO, packet: PacketHeaders) -> None:
     print(string_of_packet(packet), outc)
 
-def lookup_int(key: str, packet: Packet) -> int:
+def lookup_int(key: str, packet: PacketHeaders) -> int:
     return int_of_op_result(packet[key])
 
-def lookup_float(key: str, packet: Packet) -> float:
+def lookup_float(key: str, packet: PacketHeaders) -> float:
     return float_of_op_result(packet[key])
 

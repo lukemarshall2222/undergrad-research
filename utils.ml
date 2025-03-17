@@ -91,17 +91,20 @@ let tcp_flags_to_strings (flags: int) : string =
             flags land value = value) tcp_flags_map) "")
 
 (* checks if input is an Int op_result, raises exception otherwise *)
-let int_of_op_result (input: op_result) : int = match input with
+let int_of_op_result (input: op_result) : int = 
+    match input with
     | Int i -> i
     | _ -> raise (Failure "Trying to extract int from non-int result")
 
 (* checks if input is an Float op_result, raises exception otherwise *)
-let float_of_op_result (input: op_result) : float = match input with
+let float_of_op_result (input: op_result) : float = 
+    match input with
     | Float f -> f
     | _ -> raise (Failure "Trying to exctract float from non-float result")
 
 (* returns the human-readable version of each op_result value *)
-let string_of_op_result (input: op_result) : string = match input with
+let string_of_op_result (input: op_result) : string = 
+    match input with
     | Float f -> sprintf "%f" f
     | Int i -> string_of_int i
     | IPv4 a -> Ipaddr.V4.to_string a

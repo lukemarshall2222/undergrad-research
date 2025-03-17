@@ -93,7 +93,7 @@ returns corresponding op_result *)
 let get_ip_or_zero (input: string) : op_result =
     match input with 
         | "0" -> Int 0
-        | s -> IPv4 (Ipaddr.V4.of_string_exn s)
+        | catchall -> IPv4 (Ipaddr.V4.of_string_exn catchall)
 
 (*
  * Reads an intermediate result CSV in Walt's canonical format
@@ -285,7 +285,7 @@ type reduction_func = op_result -> (tuple) -> op_result
  *   (ii) the result of g for that group, and
  *   (iii) a mapping from out_key to the result of the fold for that group
  *)
-let create_groupby_operator (group_tup: grouping_func) (reduce: reduction_func) 
+let create_groupby_operator (groupby: grouping_func) (reduce: reduction_func) 
                 (out_key: string) (next_op: operator) : operator =
     let h_tbl: ((tuple, op_result) Hashtbl.t) = 
                 Hashtbl.create init_table_size in
@@ -293,7 +293,7 @@ let create_groupby_operator (group_tup: grouping_func) (reduce: reduction_func)
     {
         next = (fun (tup: tuple) ->
             (*grouping_key is sub-Tuple of original extracted by key_extractor*)
-            let grouping_key: tuple = group_tup tup in
+            let grouping_key: tuple = groupby tup in
             (* if the Tuple key is already in the hash table, its existing value
             and the new values are grouped via the grouping mech else the new 
             values are grouped with Empty via the grouping mech *)
@@ -378,14 +378,14 @@ let sum_ints (search_key: string) (init_val: op_result)
  * Returns a list of distinct elements (as determined by group_tup) each epoch
  * removes duplicate Tuples based on group_tup
  *)
-let create_distinct_operator (group_tup: grouping_func) 
+let create_distinct_operator (groupby: grouping_func) 
         (next_op: operator) : operator =
     let h_tbl: (tuple, bool) Hashtbl.t = Hashtbl.create 
                                                     init_table_size in
     let reset_counter: int ref = ref 0 in
     {
         next = (fun (tup: tuple) ->
-            let grouping_key: tuple = group_tup tup in
+            let grouping_key: tuple = groupby tup in
             Hashtbl.replace h_tbl grouping_key true
         ) ;
         reset = (fun (tup: tuple) ->
@@ -436,21 +436,21 @@ let create_join_operator ?(eid_key: string="eid")
     let handle_join_side (curr_h_tble: (tuple, tuple) Hashtbl.t) 
             (other_h_tbl: (tuple, tuple) Hashtbl.t) 
             (curr_epoch_ref: int ref) (other_epoch_ref: int ref) 
-            (f: key_extractor) =
+            (f: key_extractor) : operator =
         {
             next = (fun (tup: tuple) ->
                 (* extract the grouping key and remaining values, extract event 
                 ID from input tup *)
                 let (key: tuple), (vals_: tuple) = f tup in
-                let cur_e: int = get_mapped_int eid_key tup in
+                let curr_epoch: int = get_mapped_int eid_key tup in
 
-                while cur_e > !curr_epoch_ref do
+                while curr_epoch > !curr_epoch_ref do
                     if !other_epoch_ref > !curr_epoch_ref 
                     then next_op.reset (Tuple.singleton eid_key 
                             (Int !curr_epoch_ref)) ;
                     curr_epoch_ref := !curr_epoch_ref + 1
                 done ;
-                let new_tup: tuple = Tuple.add eid_key (Int cur_e) key in
+                let new_tup: tuple = Tuple.add eid_key (Int curr_epoch) key in
                 match Hashtbl.find_opt other_h_tbl new_tup with
                     | Some (val_: tuple) -> (
                         let use_left = fun _ a _ -> Some a in
@@ -463,8 +463,8 @@ let create_join_operator ?(eid_key: string="eid")
                     )
             ) ;
             reset = (fun (tup: tuple) -> 
-                let cur_e: int = get_mapped_int eid_key tup in
-                while cur_e > !curr_epoch_ref do
+                let curr_epoch: int = get_mapped_int eid_key tup in
+                while curr_epoch > !curr_epoch_ref do
                     if !other_epoch_ref > !curr_epoch_ref 
                     then next_op.reset 
                             (Tuple.singleton eid_key (Int !curr_epoch_ref)) ;

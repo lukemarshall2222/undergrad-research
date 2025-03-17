@@ -1,36 +1,9 @@
-class IPv4Adress {
-    private address: Uint8Array;
+import { Address4 } from 'ip-address';
+import { Writable } from 'stream'
 
-    constructor(address: string) {
-        const parts: number[] = address.split(".").map(Number)
-        if (parts.length !== 4) {
-            throw new Error("Error. Attempt made to create IPv4Address \
-                                out of illegal string");
-        }
+export type PacketHeaders = Map<string, opResult>
 
-        this.address = new Uint8Array(parts);
-    }
-}
-
-class Bytes {
-    private bytes: Uint8Array;
-
-    constructor(bytes: string) {
-        const parts: number[] = bytes.split(".").map(Number)
-        if (parts.length !== 4) {
-            throw new Error("Error. Attempt made to create IPv4Address \
-                                out of illegal string");
-        }
-
-        this.bytes = new Uint8Array(parts);
-    }
-
-    getUint8(index: number) : number {
-        return this.bytes[index];
-    }
-}
-
-enum opResultKind {
+export enum opResultKind {
     Float,
     Int,
     IPv4,
@@ -38,44 +11,32 @@ enum opResultKind {
     Empty,
 }
 
-type opResult = 
-    | {kind: opResultKind.Float, type_: number}
-    | {kind: opResultKind.Int, type_: number}
-    | {kind: opResultKind.IPv4, type_: IPv4Adress}
-    | {kind: opResultKind.MAC, type_: Bytes} 
-    | {kind: opResultKind.Empty, type_: null}
+export type opResult = 
+    | {kind: opResultKind.Float, val: number}
+    | {kind: opResultKind.Int, val: number}
+    | {kind: opResultKind.IPv4, val: Address4}
+    | {kind: opResultKind.MAC, val: Uint8Array} 
+    | {kind: opResultKind.Empty, val: null}
 
-type Packet = Map<string, opResult>
-
-type Operator = {
-    next:  (packet: Packet) => null;
-    reset: (packet: Packet) => null;
+export type Operator = {
+    next:  (headers: PacketHeaders) => void;
+    reset: (headers: PacketHeaders) => void;
 }
 
-type opCreator    = (nextOp: Operator) => Operator
-type dblOpCreator = (nextOp: Operator) => Operator
+export type opCreator    = (nextOp: Operator) => Operator
+export type dblOpCreator = (nextOp: Operator) => [Operator, Operator]
 
-function $π(opCreatorFunc: opCreator, nextOp: Operator): Operator {
+export function $π(opCreatorFunc: opCreator, nextOp: Operator): Operator {
     return opCreatorFunc(nextOp);
 }
 
-function $$π(opCreatorFunc: opCreator, nextOp: Operator): Operator {
+export function $$π(opCreatorFunc: dblOpCreator, nextOp: Operator): [Operator, Operator] {
     return opCreatorFunc(nextOp);
-}
+}  
 
-function stringOfMac(buf: Bytes) : string {
-    const byteAt = (index: number) => buf.getUint8(index);
-    return `${byteAt(0).toFixed(2)}:\
-            ${byteAt(1).toFixed(2)}:\
-            ${byteAt(2).toFixed(2)}:\
-            ${byteAt(3).toFixed(2)}:\
-            ${byteAt(4).toFixed(2)}:\
-            ${byteAt(5).toFixed(2)}:`
-}   
-
-function tcpFlagsToStrings(flags: number) : string {
-    let acc: string;
-    const tcpFlagsMap: Map<string, number> = new Map([
+export function tcpFlagsToStrings(flags: number) : string {
+    let acc: string = "";
+    new Map([
         ["FIN", 1 << 0],
         ["SYN", 1 << 1],
         ["RST", 1 << 2],
@@ -84,11 +45,64 @@ function tcpFlagsToStrings(flags: number) : string {
         ["URG", 1 << 5],
         ["ECE", 1 << 6],
         ["CWR", 1 << 7],
-    ]).forEach((_: number, key: string) => 
-                acc = acc + acc === "" 
-                      ? `${key}` 
-                      : "|" + `${key}`)
-                                
-                
-    
+    ]).forEach((val: number, key: string) => { if ((flags & val) === val) {
+                                                    acc = acc + (acc === "") 
+                                                    ? `${key}` 
+                                                    : "|" + `${key}`;
+                                                    }})  
+    return acc;
+}
+
+export function intOfOpResult(input: opResult) : number | TypeError{
+    switch (input.kind) {
+        case opResultKind.Int:
+            return input.val;
+        default:
+            throw new TypeError("Trying to extract int from non-int result");
+    }
+}
+
+export function floatOfOpResult(input: opResult) : number | TypeError {
+    switch (input.kind) {
+        case opResultKind.Float:
+            return input.val;
+        default:
+            throw new TypeError("Trying to extract float from non-float result");
+    }
+}
+
+export function stringOfOpResult(input: opResult) : string {
+    switch (input.kind) {
+        case opResultKind.Float:
+        case opResultKind.Int:
+        case opResultKind.IPv4:
+        case opResultKind.MAC:
+            return input.val.toString();
+        case opResultKind.Empty:
+            return "Empty";
+    }
+}
+
+export function stringOfPacketHeaders(input_packet: PacketHeaders) : string {
+   return ([...input_packet.entries()])
+            .reduce((acc, [key, val]) => acc += `${key}" \
+                        => ${stringOfOpResult(val)}, `, "");
+}
+
+export function packetHeadersOfList(header_list: [string, opResult][]) : PacketHeaders {
+    return new Map(header_list);
+}
+
+export function dumpPacketHeaders(outc: Writable, headers: PacketHeaders) : void {
+    outc.write(`${stringOfPacketHeaders(headers)}`);
+}
+
+export function lookupInt(key: string, headers: PacketHeaders) : number | TypeError {
+    return intOfOpResult(headers.get(key) ?? 
+            {kind: opResultKind.Empty, val: null});
+}
+
+export function lookupFloat(key: string, headers: PacketHeaders) : number | TypeError {
+    return floatOfOpResult(headers.get(key) ?? 
+                {kind: opResultKind.Empty, val: null});
 }

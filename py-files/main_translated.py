@@ -5,8 +5,8 @@ import sys
 from typing import cast
 
 def ident(next_op: Operator) -> Operator:
-    def remove_keys(packet: Packet) -> Packet:
-        return Packet({key: val for key, val in packet.items()
+    def remove_keys(packet: PacketHeaders) -> PacketHeaders:
+        return PacketHeaders({key: val for key, val in packet.items()
                        if key != "eth.src" and key != "eth.dst"})
     return \
     Op_to_op(create_map_operator, remove_keys) \
@@ -314,7 +314,7 @@ def q4(next_op: Operator) -> Operator:
 queries: list[Operator] = [(dump_as_csv(sys.stdout))]
 
 def run_queries() -> None:           
-    [[query.next(packet) for query in queries] for packet in [Packet({
+    [[query.next(packet) for query in queries] for packet in [PacketHeaders({
             "time": Op_result(Op_result.FLOAT, (0.000000 + cast(float, i))),
             "eth.src": Op_result(Op_result.MAC, 
                                  (bytearray(b"\x00\x11\x22\x33\x44\x55"))),
