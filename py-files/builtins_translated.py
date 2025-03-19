@@ -74,9 +74,9 @@ def dump_walts_csv(filename: str) -> Operator:
 def get_ip_or_zero(input: str) -> Op_result:
     match input:
         case "0":
-            Op_result(Op_result.INT, 0)
+            return Int(0)
         case s:
-            Op_result(Op_result.IPV4, IPv4Address(s))
+            return Ipv4(IPv4Address(s))
 
 def read_walts_csv(filenames: list[str], ops: list[Operator], 
                    epoc_id_key="eid") -> None:
@@ -114,15 +114,15 @@ def create_epoch_operator(epoch_width: float, key_out: str,
         if epoch_boundary == 0.0:
             epoch_boundary = time + epoch_width
         while time >= epoch_boundary:
-            next_op.reset({key_out: Op_result(Op_result.INT, eid)})
+            next_op.reset({key_out: Int(eid)})
             epoch_boundary = epoch_boundary + epoch_width
             eid += 1
         next_op.next(packet.__setitem__
-                     (key_out, Op_result(Op_result.INT, eid)))
+                     (key_out, Int(eid)))
         
     def reset(_ : PacketHeaders) -> None:
         nonlocal epoch_boundary, eid
-        next_op.reset({key_out: Op_result(Op_result.INT, eid)})
+        next_op.reset({key_out: Int(eid)})
         epoch_boundary = 0.0
         eid = 0
 
@@ -157,7 +157,7 @@ def create_groupby_operator(group_packet: grouping_func, reduce: reduction_func,
         grouping_key: PacketHeaders = group_packet(packet)
         match h_tbl.get(grouping_key, None):
             case None:
-                h_tbl[grouping_key] = reduce(Op_result(Op_result.Empty), packet)
+                h_tbl[grouping_key] = reduce(Empty(), packet)
             case val: h_tbl[grouping_key] = reduce(val, packet)
         
     def reset(packet: PacketHeaders) -> None:
@@ -181,25 +181,25 @@ def single_group(_: PacketHeaders) -> PacketHeaders:
     return PacketHeaders()
 
 def counter(val: Op_result, _: PacketHeaders) -> Op_result:
-    match val.kind:
-        case Op_result.Empty:
-            return Op_result(Op_result.INT, 1)
-        case Op_result.INT:
+    match val:
+        case Empty():
+            return Int(1)
+        case Int():
             return int_of_op_result(val) + 1
         case _:
             return val
         
 def sum_ints(search_key: str, init_val: Op_result, packet: PacketHeaders) -> Op_result:
-    match init_val.kind:
-        case Op_result.Empty:
-            return Op_result(Op_result.INT, 1)
-        case Op_result.INT:
+    match init_val:
+        case Empty():
+            return Int(1)
+        case Int():
             match packet.get(search_key, None):
                 case None:
                     raise KeyError("'sum_vals' function failed to find integer",
                                    f"value mapped to {search_key}")
                 case val:
-                    return Op_result(Op_result.INT, int_of_op_result(val)+1)
+                    return Int(int_of_op_result(val)+1)
         case _:
             return init_val
         
@@ -249,10 +249,10 @@ def create_join_operator(left_extractor: key_extractor, right_extractor: key_ext
 
             while curr_e > curr_epoch:
                 if other_epoch > curr_epoch:
-                    next_op.reset({eid_key, Op_result(Op_result.INT, curr_epoch+1)})
+                    next_op.reset({eid_key, Int(curr_epoch+1)})
             
             new_packet: PacketHeaders = PacketHeaders(deepcopy(key.data).__setitem__
-                                        (eid_key, Op_result(Op_result.INT, curr_e)))
+                                        (eid_key, Int(curr_e)))
             match other_h_tbl.get(new_packet, None):
                 case None:
                     curr_h_tbl[new_packet] = val
@@ -265,7 +265,7 @@ def create_join_operator(left_extractor: key_extractor, right_extractor: key_ext
             curr_e: int = packet.get_mapped_int(eid_key)
             while curr_e > curr_epoch:
                 if other_epoch > curr_epoch:
-                    next_op.reset({eid_key, Op_result(Op_result.INT, curr_epoch)})
+                    next_op.reset({eid_key, Int(curr_epoch)})
                 curr_epoch += 1
         
         return Operator(next, reset)

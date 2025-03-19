@@ -10,17 +10,30 @@ type op_result_type = Union[float, int, IPv4Address, bytearray, None]
 
 @dataclass
 class Op_result(ABC):
-    FLOAT = "Float"
-    INT = "int"
-    IPV4 = "IPv4"
-    MAC = "MAC"
-    Empty = None
-
-    kind: Union[str, None]
     val: op_result_type = None
 
     def __hash__(self): 
         return hash((self.kind, self.val))
+
+@dataclass
+class Float(Op_result):
+    val: float
+
+@dataclass
+class Int(Op_result):
+    val: int
+
+@dataclass
+class Ipv4(Op_result):
+    val: IPv4Address
+
+@dataclass
+class MAC(Op_result):
+    val: bytearray
+
+@dataclass
+class Empty(Op_result):
+    val: None = None
 
 
 class PacketHeaders:
