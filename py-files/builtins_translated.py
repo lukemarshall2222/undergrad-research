@@ -142,7 +142,8 @@ def create_filter_operator(f: Callable[[PacketHeaders], bool],
 def key_geq_int(key: str, threshold: int, packet: PacketHeaders) -> bool:
     return int_of_op_result(packet[key]) >= threshold
 
-def create_map_operator(f: Callable[[PacketHeaders], PacketHeaders], next_op: Operator) -> Operator:
+def create_map_operator(f: Callable[[PacketHeaders], PacketHeaders], 
+                        next_op: Operator) -> Operator:
     next: next_func = lambda packet: next_op.next(f(packet))
     reset: reset_func = lambda packet: next_op.reset(packet)
 
@@ -240,8 +241,10 @@ def create_join_operator(left_extractor: key_extractor, right_extractor: key_ext
     left_curr_epoch = 0
     right_curr_epoch = 0
 
-    def handle_join_side(curr_h_tbl: dict[PacketHeaders, PacketHeaders], other_h_tbl: dict[PacketHeaders, PacketHeaders], 
-                         curr_epoch: int, other_epoch: int, extractor: key_extractor) -> Operator:
+    def handle_join_side(curr_h_tbl: dict[PacketHeaders, PacketHeaders], 
+                         other_h_tbl: dict[PacketHeaders, PacketHeaders], 
+                         curr_epoch: int, other_epoch: int, 
+                         extractor: key_extractor) -> Operator:
         def next(packet: PacketHeaders) -> None:
             key_n_val: tuple[PacketHeaders, PacketHeaders] = extractor(packet)
             key, val = key_n_val
@@ -275,7 +278,8 @@ def create_join_operator(left_extractor: key_extractor, right_extractor: key_ext
             handle_join_side(h_tbl2, h_tbl1, right_curr_epoch, left_curr_epoch, right_extractor)
            )
 
-def rename_filtered_keys(renaming_pairs: list[tuple[str, str]], in_packet: PacketHeaders) -> PacketHeaders:
+def rename_filtered_keys(renaming_pairs: list[tuple[str, str]], 
+                         in_packet: PacketHeaders) -> PacketHeaders:
     new_packet: PacketHeaders = PacketHeaders()
     return [ new_packet.__setitem__(new, in_packet[old]) 
                 for new, old in renaming_pairs if old in in_packet ]

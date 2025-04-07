@@ -9,8 +9,6 @@ open Printf
 let init_table_size: int = 10000
 
 (*
- * dump : ?show_reset:bool -> out_channel -> operator
- *
  * Dump all fields of all tuples to the given output channel
  * Note that dump is terminal in that it does not take a continuation operator 
  * as argument
@@ -29,8 +27,6 @@ let create_dump_operator ?(show_reset: bool=false) (outc: out_channel)
     }
 
 (*
- * dump_csv : out_channel -> operator
- *
  * Tries to dump a nice csv-style output
  * Assumes all tuples have the same fields in the same order...
  *)
@@ -63,8 +59,6 @@ let dump_as_csv ?(static_field:(string*string)option = None) ?(header=true)
     }
 
 (*
- * dump_walts_csv : out_channel -> operator
- *
  * Dumps csv in Walt's canonical csv format: src_ip, dst_ip, src_l4_port, dst_l4_port, packet_count, byte_count, epoch_id
  * Unused fields are zeroed, map packet length to src_l4_port for ssh brute force
  *)
@@ -88,6 +82,7 @@ let dump_walts_csv (filename: string) : operator =
         );
         reset = fun _ -> ();
     }
+    
 (* input is either "0" or and IPv4 address in string format,
 returns corresponding op_result *)
 let get_ip_or_zero (input: string) : op_result =
@@ -155,8 +150,6 @@ let read_walts_csv ?(epoch_id_key="eid") (file_names: string list)
     printf "Done.\n"
 
 (*
- * meta_meter : string -> out_channel -> operator
- *
  * Write the number of tuples passing through this operator each epoch
  * to the out_channel
  *)
@@ -179,8 +172,6 @@ let create_meta_meter ?(static_field: string option = None) (name: string)
     }
 
 (*
- * epoch : float -> string -> operator -> operator
- *
  * Passes tuples through to op
  * Resets op every w seconds
  * Adds epoch id to tuple under key_out
@@ -212,8 +203,6 @@ let create_epoch_operator (epoch_width: float) (key_out: string)
     }
 
 (*
- * filter : (tuple -> bool) -> operator -> operator
- *
  * Passes only tuples where f applied to the tuple returns true
  *)
 (* creates a filtering opterator, applying the given operator if this one 
@@ -227,8 +216,6 @@ let create_filter_operator (f: (tuple -> bool))
 
 (*
  * (filter utility)
- * key_geq_int : string -> int -> tuple -> bool
- *
  * comparison function for testing int values against a threshold
  *)
 let key_geq_int (key: string) (threshold: int) (tup: tuple) : bool =
@@ -237,8 +224,6 @@ let key_geq_int (key: string) (threshold: int) (tup: tuple) : bool =
 
 (*
  * (filter utility)
- * find_int : string -> tuple -> int
- *
  * Looks up the given key and converts to Int op_result
  * if the key does not hold an int, this will raise an exception
  *)
@@ -247,8 +232,6 @@ let get_mapped_int (key: string) (tup: tuple) : int =
 
 (*
  * (filter utility)
- * find_float : string -> tuple -> float
- *
  * Looks up the given key and converts to Float op_result 
  * if the key does not hold an int, this will raise an exception
  *)
@@ -256,8 +239,6 @@ let get_mapped_float (key: string) (tup: tuple) : float =
     float_of_op_result (Tuple.find key tup)
 
 (*
- * map : (tuple -> tuple) -> operator -> operator
- *
  * Operator which applied the given function on all tuples
  * Passes resets, unchanged
  *)
@@ -273,9 +254,6 @@ type grouping_func = (tuple) -> (tuple)
 type reduction_func = op_result -> (tuple) -> op_result
 
 (*
- * groupby : (tuple -> tuple) -> (op_result -> tuple -> op_result) 
-                -> string -> operator -> operator
- *
  * Groups the input Tuples according to canonic members returned by
  *   key_extractor : Tuple -> Tuple
  * Tuples in each group are folded (starting with Empty) by
@@ -322,8 +300,6 @@ let create_groupby_operator (groupby: grouping_func) (reduce: reduction_func)
 
 (*
  * (groupby utility : key_extractor)
- * get_keys : string list -> tuple -> tuple
- *
  * Returns a new tuple with only the keys included in the incl_keys list
  *)
 let filter_groups (incl_keys: string list) (tup: tuple) 
@@ -332,16 +308,12 @@ let filter_groups (incl_keys: string list) (tup: tuple)
 
 (*
  * (groupby utility : key_extractor)
- * single_group : tuple -> tuple
- *
  * Grouping function (key_extractor) that forms a single group
  *)
 let single_group (_: tuple) : tuple = Tuple.empty
 
 (*
  * (groupby utility : grouping_mech)
- * count : op_result -> tuple -> op_result
- *
  * Reduction function (f) to count tuples
  *)
 let counter (val_: op_result) (_: tuple) : op_result =
@@ -352,8 +324,6 @@ let counter (val_: op_result) (_: tuple) : op_result =
 
 (*
  * (groupby utility)
- * sum_vals : string -> op_result -> tuple -> op_result
- *
  * Reduction function (f) to sum values (assumed to be Int ()) of a given field
  *)
 let sum_ints (search_key: string) (init_val: op_result) 
@@ -373,8 +343,6 @@ let sum_ints (search_key: string) (init_val: op_result)
         | _ -> init_val
 
 (*
- * distinct : (tuple -> tuple) -> operator -> operator
- *
  * Returns a list of distinct elements (as determined by group_tup) each epoch
  * removes duplicate Tuples based on group_tup
  *)
@@ -400,8 +368,6 @@ let create_distinct_operator (groupby: grouping_func)
     }
 
 (*
- * split : operator -> operator -> operator
- *
  * Just sends both next and reset directly to two different downstream operators
  * i.e. splits the stream processing in two
  *)
@@ -416,8 +382,6 @@ let create_split_operator (l: operator) (r: operator) : operator =
 type key_extractor = tuple -> (tuple * tuple)
 
 (*
- * join : (tuple -> tuple -> tuple option) -> operator -> (operator * operator)
- *
  * Initial shot at a join semantic that doesn't require maintining entire state
  * Functions left and right transform input tuples into a key,value pair of tuples
  * The key determines a canonical tuple against which the other stream will match
@@ -480,8 +444,6 @@ let create_join_operator ?(eid_key: string="eid")
 
 (*
  * (join utility)
- * get_keys_rename : (string * string) list -> tuple -> tuple
- *
  * Returns a new tuple with only the keys included in the first of each pair in 
  * keys
  * These keys are renamed to the second of each pair in keys
