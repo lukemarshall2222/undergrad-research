@@ -1,9 +1,10 @@
 use std::net::Ipv4Addr;
 use std::collections::HashMap;
-use std::ops::ShrAssign;
 use std::io::{Error, ErrorKind};
+use std::io::Write;
+use std::fmt;
 
-enum OpResult {
+pub enum OpResult {
     Float(f64),
     Int(i32),
     IPv4(Ipv4Addr),
@@ -11,20 +12,47 @@ enum OpResult {
     Empty,
 }
 
-type Headers = HashMap<String, OpResult>;
-struct Operator {
-    next: Box<dyn FnMut(Headers)>,
-    reset: Box<dyn FnMut(Headers)>,
+impl OpResult {
+    fn clone(&self) -> Self {
+        match self {
+            OpResult::Float(f) => OpResult::Float(f.clone()),
+            OpResult::Int(i)   => OpResult::Int(i.clone()),
+            OpResult::IPv4(a)  => OpResult::IPv4(a.clone()),
+            OpResult::MAC(m)   => OpResult::MAC(m.clone()),
+            OpResult::Empty  => OpResult::Empty
+        }
+    }
 }
 
-type OpCreator = fn(Operator) -> Operator;
-type DoubleOpCreator = fn(Operator) -> (Operator, Operator);
+impl fmt::Display for OpResult {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", string_of_op_result(self))
+    }
+}
 
-struct OpApplicator {
+pub type Headers = HashMap<String, OpResult>;
+pub struct Operator<'a> {
+    next: Box<dyn FnMut(&Headers) -> () + 'a>,
+    reset: Box<dyn FnMut(&Headers) -> () + 'a>,
+}
+
+impl<'a> Operator<'a> {
+
+    pub fn new( next: Box<dyn FnMut(&Headers) + 'a>, 
+                reset: Box<dyn FnMut(&Headers) + 'a>
+            ) -> Operator<'a> {
+            Operator { next, reset }
+    }
+}
+
+pub type OpCreator = fn(Operator) -> Operator;
+pub type DoubleOpCreator = fn(Operator) -> (Operator, Operator);
+
+pub struct OpApplicator {
     func: Box<dyn FnMut(Operator) -> Operator>,
 }
 
-struct DblOpApplicator {
+pub struct DblOpApplicator {
     func: Box<dyn FnMut(Operator) -> (Operator, Operator)>,
 }
 
@@ -40,14 +68,14 @@ impl DblOpApplicator {
     }
 }
 
-fn string_of_mac(buf: &[u8; 6]) -> String {
+pub fn string_of_mac(buf: &[u8; 6]) -> String {
     buf.iter()
         .map(|b| format!("{:02X}", b))
         .collect::<Vec<_>>()
         .join(":")
 }
 
-fn tcp_flags_to_strings(flags: i32) -> String {
+pub fn tcp_flags_to_strings(flags: i32) -> String {
     let mut hmap: HashMap<&str, i32> = HashMap::new();
     hmap
         .extend([
@@ -72,13 +100,77 @@ fn tcp_flags_to_strings(flags: i32) -> String {
         })
 }
 
-fn int_of_op_result(input: &OpResult) -> Result<i32, Error>  {
+pub fn int_of_op_result(input: &OpResult) -> Result<i32, Error>  {
     match *input {
         OpResult::Int(i) => Ok(i),
-        _ => Err(Error::new(ErrorKind::InvalidInput, "Trying to extract int from non-int result"))
+        _                     => Err(Error::new(
+                                    ErrorKind::InvalidInput, 
+                                    "Trying to extract int from non-int result"
+                                ))
     } 
 }
 
+pub fn float_of_op_result(input: &OpResult) -> Result<f64, Error> {
+    match *input {
+        OpResult::Float(f) => Ok(f),
+        _                       => Err(Error::new(
+                                ErrorKind::InvalidInput, 
+                                "Trying to extract float from non-float result"
+        ))
+    }
+}
 
+pub fn string_of_op_result(input: &OpResult) -> String {
+    match *input {
+        OpResult::Float(f)     => f.to_string(),
+        OpResult::Int(i)       => i.to_string(),
+        OpResult::IPv4(a) => a.to_string(),
+        OpResult::MAC(m)   => string_of_mac(&m),
+        OpResult::Empty             => String::from("Empty")
+    }
+}
 
+pub fn string_of_headers(input_headers: &Headers) -> String {
+    input_headers
+        .iter()
+        .fold(String::new(), 
+        |mut acc, (key, val)| {
+            acc
+                .push_str(format!("\"{}\" => {}, ", 
+                                            key, 
+                                            string_of_op_result(val))
+                .as_str()); 
+            acc 
+        })
+}
 
+pub fn headers_of_list(header_list: &[(String, OpResult)]) -> Headers {
+    let mut hmap: HashMap<String, OpResult> = HashMap::new();
+    for (key, val) in header_list {
+        hmap.insert(key.clone(), val.clone());
+    }
+    hmap
+}
+
+pub fn dump_headers<'a, W: Write>(outc: &'a mut W, headers: &Headers) -> Result<&'a W, Error> {
+    outc
+        .write_all(string_of_headers(headers)
+                            .as_bytes());
+    Ok(outc)
+}
+
+pub fn lookup_int(key: &String, headers: &Headers) -> Result<i32, Error> {
+    match headers.get(key) {
+        Some(i) => int_of_op_result(i),
+        None => Err(Error::new(ErrorKind::InvalidData, 
+                        "key given as argument is not a valid key of the given hashmap"))
+    }
+}
+
+pub fn lookup_float(key: &String, headers: &Headers) -> Result<f64, Error> {
+    match headers.get(key) {
+        Some(f) => float_of_op_result(f),
+        None => Err(Error::new(ErrorKind::InvalidData, 
+                        "key given as argument is not a valid key of the given hashmap"))
+    }
+}
