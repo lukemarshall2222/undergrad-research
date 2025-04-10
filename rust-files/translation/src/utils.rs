@@ -31,9 +31,10 @@ impl fmt::Display for OpResult {
 }
 
 pub type Headers = HashMap<String, OpResult>;
+
 pub struct Operator<'a> {
-    next: Box<dyn FnMut(&Headers) -> () + 'a>,
-    reset: Box<dyn FnMut(&Headers) -> () + 'a>,
+    pub next: Box<dyn FnMut(&Headers) + 'a>,
+    pub reset: Box<dyn FnMut(&Headers) + 'a>,
 }
 
 impl<'a> Operator<'a> {
@@ -152,10 +153,8 @@ pub fn headers_of_list(header_list: &[(String, OpResult)]) -> Headers {
     hmap
 }
 
-pub fn dump_headers<'a, W: Write>(outc: &'a mut W, headers: &Headers) -> Result<&'a W, Error> {
-    outc
-        .write_all(string_of_headers(headers)
-                            .as_bytes());
+pub fn dump_headers<'a>(outc: &'a mut Box<dyn Write>, headers: &Headers) -> Result<&'a Box<dyn Write>, Error> {
+    writeln!(outc, "{}", string_of_headers(headers));
     Ok(outc)
 }
 
