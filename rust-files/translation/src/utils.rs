@@ -1,27 +1,19 @@
+#![allow(dead_code)]
+
 use std::net::Ipv4Addr;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::io::{Error, ErrorKind};
 use std::io::Write;
 use std::fmt;
+use ordered_float::OrderedFloat;
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum OpResult {
-    Float(f64),
+    Float(OrderedFloat<f64>),
     Int(i32),
     IPv4(Ipv4Addr),
     MAC([u8; 6]),
     Empty,
-}
-
-impl OpResult {
-    fn clone(&self) -> Self {
-        match self {
-            OpResult::Float(f) => OpResult::Float(f.clone()),
-            OpResult::Int(i)   => OpResult::Int(i.clone()),
-            OpResult::IPv4(a)  => OpResult::IPv4(a.clone()),
-            OpResult::MAC(m)   => OpResult::MAC(m.clone()),
-            OpResult::Empty  => OpResult::Empty
-        }
-    }
 }
 
 impl fmt::Display for OpResult {
@@ -30,42 +22,18 @@ impl fmt::Display for OpResult {
     }
 }
 
-pub type Headers = HashMap<String, OpResult>;
-
+pub type Headers = BTreeMap<String, OpResult>;
 pub struct Operator<'a> {
-    pub next: Box<dyn FnMut(&Headers) + 'a>,
-    pub reset: Box<dyn FnMut(&Headers) + 'a>,
+    pub next: Box<dyn FnMut(&mut Headers) -> () + 'a>,
+    pub reset: Box<dyn FnMut(&mut Headers) -> () + 'a>,
 }
 
 impl<'a> Operator<'a> {
 
-    pub fn new( next: Box<dyn FnMut(&Headers) + 'a>, 
-                reset: Box<dyn FnMut(&Headers) + 'a>
+    pub fn new( next: Box<dyn FnMut(&mut Headers) + 'a>, 
+                reset: Box<dyn FnMut(&mut Headers) + 'a>
             ) -> Operator<'a> {
             Operator { next, reset }
-    }
-}
-
-pub type OpCreator = fn(Operator) -> Operator;
-pub type DoubleOpCreator = fn(Operator) -> (Operator, Operator);
-
-pub struct OpApplicator {
-    func: Box<dyn FnMut(Operator) -> Operator>,
-}
-
-pub struct DblOpApplicator {
-    func: Box<dyn FnMut(Operator) -> (Operator, Operator)>,
-}
-
-impl OpApplicator {
-    fn __π(&mut self, next_op: Operator) -> Operator {
-        (self.func)(next_op)
-    }
-}
-
-impl DblOpApplicator {
-    fn ____ππ(&mut self, next_op: Operator) -> (Operator, Operator) {
-        (self.func)(next_op)
     }
 }
 
@@ -77,7 +45,7 @@ pub fn string_of_mac(buf: &[u8; 6]) -> String {
 }
 
 pub fn tcp_flags_to_strings(flags: i32) -> String {
-    let mut hmap: HashMap<&str, i32> = HashMap::new();
+    let mut hmap: BTreeMap<&str, i32> = BTreeMap::new();
     hmap
         .extend([
             ("FIN", 1 << 0),
@@ -111,7 +79,7 @@ pub fn int_of_op_result(input: &OpResult) -> Result<i32, Error>  {
     } 
 }
 
-pub fn float_of_op_result(input: &OpResult) -> Result<f64, Error> {
+pub fn float_of_op_result(input: &OpResult) -> Result<OrderedFloat<f64>, Error> {
     match *input {
         OpResult::Float(f) => Ok(f),
         _                       => Err(Error::new(
@@ -146,15 +114,15 @@ pub fn string_of_headers(input_headers: &Headers) -> String {
 }
 
 pub fn headers_of_list(header_list: &[(String, OpResult)]) -> Headers {
-    let mut hmap: HashMap<String, OpResult> = HashMap::new();
+    let mut hmap: BTreeMap<String, OpResult> = BTreeMap::new();
     for (key, val) in header_list {
         hmap.insert(key.clone(), val.clone());
     }
     hmap
 }
 
-pub fn dump_headers<'a>(outc: &'a mut Box<dyn Write>, headers: &Headers) -> Result<&'a Box<dyn Write>, Error> {
-    writeln!(outc, "{}", string_of_headers(headers));
+pub fn dump_headers<'a, W: Write>(outc: &'a mut W, headers: &Headers) -> Result<&'a W, Error> {
+    writeln!(outc, "{}", string_of_headers(headers)).unwrap();
     Ok(outc)
 }
 
@@ -162,14 +130,14 @@ pub fn lookup_int(key: &String, headers: &Headers) -> Result<i32, Error> {
     match headers.get(key) {
         Some(i) => int_of_op_result(i),
         None => Err(Error::new(ErrorKind::InvalidData, 
-                        "key given as argument is not a valid key of the given hashmap"))
+                        "key given as argument is not a valid key of the given BTreeMap"))
     }
 }
 
-pub fn lookup_float(key: &String, headers: &Headers) -> Result<f64, Error> {
+pub fn lookup_float(key: &String, headers: &Headers) -> Result<OrderedFloat<f64>, Error> {
     match headers.get(key) {
         Some(f) => float_of_op_result(f),
         None => Err(Error::new(ErrorKind::InvalidData, 
-                        "key given as argument is not a valid key of the given hashmap"))
+                        "key given as argument is not a valid key of the given BTreeMap"))
     }
 }
