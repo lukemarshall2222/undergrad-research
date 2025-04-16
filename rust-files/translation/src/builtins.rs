@@ -211,7 +211,7 @@ pub fn create_filter_operator<'a>(
 }
 
 pub fn key_geq_int(key: String, threshold: i32, headers: &Headers) -> bool {
-    int_of_op_result(headers.get(&key).unwrap_or(&OpResult::Empty)).unwrap() >= threashold
+    int_of_op_result(headers.get(&key).unwrap_or(&OpResult::Empty)).unwrap() >= threshold
 }
 
 pub fn get_mapped_int(key: String, headers: &Headers) -> i32 {
@@ -223,22 +223,22 @@ pub fn get_mapped_float(key: String, headers: &Headers) -> OrderedFloat<f64> {
 }
 
 pub fn create_map_operator<'a>(
-    f: Box<dyn Fn(&mut Headers) -> &mut Headers + 'a>,
+    f: Box<dyn Fn(Headers) -> Headers + 'a>,
     mut next_op: Operator<'a>,
 ) -> Operator<'a> {
     let f = Rc::new(RefCell::new(f));
 
-    let mapping_func_ref1: Rc<RefCell<Box<dyn Fn(&mut Headers) -> &mut Headers + 'a>>> =
+    let mapping_func_ref1: Rc<RefCell<Box<dyn Fn(Headers) -> Headers + 'a>>> =
         Rc::clone(&f);
-    let mapping_func_ref2: Rc<RefCell<Box<dyn Fn(&mut Headers) -> &mut Headers + 'a>>> =
+    let mapping_func_ref2: Rc<RefCell<Box<dyn Fn(Headers) -> Headers + 'a>>> =
         Rc::clone(&f);
 
     let next: Box<dyn FnMut(&mut Headers) + 'a> = Box::new(move |headers: &mut Headers| {
-        (next_op.next)((mapping_func_ref1.borrow_mut())(headers))
+        (next_op.next)(&mut ((mapping_func_ref1.borrow_mut())(headers.clone())))
     });
 
     let reset: Box<dyn FnMut(&mut Headers) + 'a> = Box::new(move |headers: &mut Headers| {
-        (next_op.reset)((mapping_func_ref2.borrow_mut())(headers))
+        (next_op.reset)(&mut ((mapping_func_ref2.borrow_mut())(headers.clone())))
     });
 
     Operator::new(next, reset)
@@ -388,7 +388,7 @@ pub fn create_split_operator<'a>(l: Operator<'a>, r: Operator<'a>) -> Operator<'
     Operator::new(next, reset)
 }
 
-pub type KeyExtractor = Box<dyn Fn(&mut Headers) -> (&mut Headers, &mut Headers)>;
+pub type KeyExtractor = Box<dyn FnMut(Headers) -> (Headers, Headers)>;
 
 pub fn singleton(key: String, val: OpResult) -> Headers {
     BTreeMap::from([(key, val)])
@@ -399,7 +399,7 @@ pub fn handle_join_side<'a>(
     mut _other_hash_tbl: Rc<RefCell<HashMap<Headers, Headers>>>,
     curr_epoch_ref: Rc<RefCell<i32>>,
     other_epoch_ref: Rc<RefCell<i32>>,
-    f: KeyExtractor,
+    mut f: KeyExtractor,
     mut _first_reset_func_ref: Rc<RefCell<Box<dyn FnMut(&mut Headers) + 'a>>>,
     mut _second_reset_func_ref: Rc<RefCell<Box<dyn FnMut(&mut Headers) + 'a>>>,
     mut _next_func_ref: Rc<RefCell<Box<dyn FnMut(&mut Headers) + 'a>>>,
@@ -418,7 +418,7 @@ pub fn handle_join_side<'a>(
 
     let next: Box<dyn FnMut(&mut Headers) + 'a> = Box::new(move |headers: &mut Headers| {
         let mut _headers_cp = &mut headers.clone();
-        let (key, vals) = f(_headers_cp);
+        let (key, vals) = f(_headers_cp.clone());
         let mut _curr_epoch: i32 = get_mapped_int(eid_key1.borrow_mut().clone(), headers);
 
         while _curr_epoch > *curr_epoch_ref.borrow() {
@@ -441,7 +441,7 @@ pub fn handle_join_side<'a>(
         {
             Some((_, val)) => {
                 (next_func_ref.borrow_mut())(
-                    &mut (union_headers(&mut union_headers(&mut new_headers, vals), val)),
+                    &mut (union_headers(&mut union_headers(&mut new_headers, &mut vals.clone()), val)),
                 )
             }
             None => {
@@ -528,7 +528,7 @@ pub fn create_join_operator<'a>(
     )
 }
 
-fn rename_filtered_keys(renaming_pairs: Vec<(String, String)>, headers: &mut Headers) -> Headers {
+pub fn rename_filtered_keys(renaming_pairs: Vec<(String, String)>, headers: &mut Headers) -> Headers {
     let mut new_headers: BTreeMap<String, OpResult> = BTreeMap::new();
     for (new_key, old_key) in renaming_pairs {
         if let Some(val) = headers.get(&old_key) {

@@ -91,23 +91,6 @@ let ddos (next_op: operator) : operator =
     @=> (create_filter_operator (key_geq_int "srcs" threshold))
     @=> next_op
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    
-
 (* Sonata 6 --- Note this implements the Sonata semantic of this query 
 *NOT* the intended semantic from NetQRE *)
 let syn_flood_sonata (next_op: operator) : operator list =
@@ -160,6 +143,18 @@ let syn_flood_sonata (next_op: operator) : operator list =
         @=> join_op1
     in [syns @=> join_op3 ; synacks @=> join_op4 ; acks @=> join_op2]
     
+
+
+
+
+
+
+
+
+
+
+
+
 
 (* Sonata 7 *)
 let completed_flows (next_op: operator) : operator list =
