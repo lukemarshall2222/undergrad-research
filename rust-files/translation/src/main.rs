@@ -1,19 +1,19 @@
 #![allow(dead_code)]
 
 use builtins::{
-    FilterFunc, GroupingFunc, counter, create_distinct_operator, create_epoch_operator,
-    create_filter_operator, create_groupby_operator, create_join_operator, create_map_operator,
-    filter_groups, get_mapped_int, key_geq_int, rename_filtered_keys, single_group,
+    FilterFunc, GroupingFunc, ReductionFunc, counter, create_distinct_operator,
+    create_epoch_operator, create_filter_operator, create_groupby_operator, create_join_operator,
+    create_map_operator, filter_groups, get_mapped_int, key_geq_int, rename_filtered_keys,
+    single_group, sum_ints,
 };
-use utils::{Headers, Operator, OperatorRef};
+use utils::{Headers, OpResult, Operator, OperatorRef};
 
 mod builtins;
 mod utils;
 
 fn ident(next_op: OperatorRef) -> OperatorRef {
     create_map_operator(
-        Box::new(|headers: Headers| {
-            let mut headers = headers.clone();
+        Box::new(move |mut headers: Headers| {
             headers.remove("eth.src");
             headers.remove("eth.dst");
             headers
@@ -25,7 +25,7 @@ fn ident(next_op: OperatorRef) -> OperatorRef {
 fn count_pkts(next_op: OperatorRef) -> OperatorRef {
     let incl_keys = Vec::from(["ipv4.src".to_string(), "ipv4.dst".to_string()]);
     let groupby_func: GroupingFunc =
-        Box::new(move |headers: Headers| filter_groups(incl_keys.clone(), &mut headers.clone()));
+        Box::new(move |mut headers: Headers| filter_groups(incl_keys.clone(), &mut headers));
     create_epoch_operator(
         1.0,
         "eid".to_string(),
@@ -36,7 +36,7 @@ fn count_pkts(next_op: OperatorRef) -> OperatorRef {
 fn pkts_per_source_dst(next_op: OperatorRef) -> OperatorRef {
     let incl_keys = Vec::from(["ipv4.src".to_string(), "ipv4.dst".to_string()]);
     let groupby_func: GroupingFunc =
-        Box::new(move |headers: Headers| filter_groups(incl_keys.clone(), &mut headers.clone()));
+        Box::new(move |mut headers: Headers| filter_groups(incl_keys.clone(), &mut headers));
     create_epoch_operator(
         1.0,
         "eid".to_string(),
@@ -47,7 +47,7 @@ fn pkts_per_source_dst(next_op: OperatorRef) -> OperatorRef {
 fn distinct_srcs(next_op: OperatorRef) -> OperatorRef {
     let incl_keys = Vec::from(["ipv4.src".to_string()]);
     let groupby_func: GroupingFunc =
-        Box::new(move |headers: Headers| filter_groups(incl_keys.clone(), &mut headers.clone()));
+        Box::new(move |mut headers: Headers| filter_groups(incl_keys.clone(), &mut headers));
     create_epoch_operator(
         1.0,
         "eid".to_string(),
@@ -71,7 +71,7 @@ fn tcp_new_cons(next_op: OperatorRef) -> OperatorRef {
             && get_mapped_int("l4.flags".to_string(), &headers) == 2
     });
     let groupby_func: GroupingFunc =
-        Box::new(move |headers: Headers| filter_groups(incl_keys.clone(), &mut headers.clone()));
+        Box::new(move |mut headers: Headers| filter_groups(incl_keys.clone(), &mut headers));
     let filter_func2: FilterFunc =
         Box::new(move |headers: &Headers| key_geq_int("cons".to_string(), threshold, headers));
     create_epoch_operator(
@@ -102,9 +102,9 @@ fn ssh_brute_force(next_op: OperatorRef) -> OperatorRef {
             && get_mapped_int("l4.dport".to_string(), &headers) == 22
     });
     let groupby_func: GroupingFunc =
-        Box::new(move |headers: Headers| filter_groups(incl_keys.clone(), &mut headers.clone()));
+        Box::new(move |mut headers: Headers| filter_groups(incl_keys.clone(), &mut headers));
     let groupby_func2: GroupingFunc =
-        Box::new(move |headers: Headers| filter_groups(incl_keys2.clone(), &mut headers.clone()));
+        Box::new(move |mut headers: Headers| filter_groups(incl_keys2.clone(), &mut headers));
     let filter_func2: FilterFunc =
         Box::new(move |headers: &Headers| key_geq_int("srcs".to_string(), threshold, headers));
     create_epoch_operator(
@@ -130,9 +130,9 @@ fn super_spreader(next_op: OperatorRef) -> OperatorRef {
     let incl_keys: Vec<String> = Vec::from(["ipv4.src".to_string(), "ipv4.dst".to_string()]);
     let incl_keys2: Vec<String> = Vec::from(["ipv4.src".to_string()]);
     let groupby_func: GroupingFunc =
-        Box::new(move |headers: Headers| filter_groups(incl_keys.clone(), &mut headers.clone()));
+        Box::new(move |mut headers: Headers| filter_groups(incl_keys.clone(), &mut headers));
     let groupby_func2: GroupingFunc =
-        Box::new(move |headers: Headers| filter_groups(incl_keys2.clone(), &mut headers.clone()));
+        Box::new(move |mut headers: Headers| filter_groups(incl_keys2.clone(), &mut headers));
     let filter_func: FilterFunc =
         Box::new(move |headers: &Headers| key_geq_int("dsts".to_string(), threshold, headers));
     create_epoch_operator(
@@ -155,9 +155,9 @@ fn port_scan(next_op: OperatorRef) -> OperatorRef {
     let incl_keys: Vec<String> = Vec::from(["ipv4.src".to_string(), "l4.dport".to_string()]);
     let incl_keys2: Vec<String> = Vec::from(["ipv4.src".to_string()]);
     let groupby_func: GroupingFunc =
-        Box::new(move |headers: Headers| filter_groups(incl_keys.clone(), &mut headers.clone()));
+        Box::new(move |mut headers: Headers| filter_groups(incl_keys.clone(), &mut headers));
     let groupby_func2: GroupingFunc =
-        Box::new(move |headers: Headers| filter_groups(incl_keys2.clone(), &mut headers.clone()));
+        Box::new(move |mut headers: Headers| filter_groups(incl_keys2.clone(), &mut headers));
     let filter_func: FilterFunc =
         Box::new(move |headers: &Headers| key_geq_int("ports".to_string(), threshold, headers));
     create_epoch_operator(
@@ -180,9 +180,9 @@ fn ddos(next_op: OperatorRef) -> OperatorRef {
     let incl_keys: Vec<String> = Vec::from(["ipv4.src".to_string(), "ipv4.dst".to_string()]);
     let incl_keys2: Vec<String> = Vec::from(["ipv4.dst".to_string()]);
     let groupby_func: GroupingFunc =
-        Box::new(move |headers: Headers| filter_groups(incl_keys.clone(), &mut headers.clone()));
+        Box::new(move |mut headers: Headers| filter_groups(incl_keys.clone(), &mut headers));
     let groupby_func2: GroupingFunc =
-        Box::new(move |headers: Headers| filter_groups(incl_keys2.clone(), &mut headers.clone()));
+        Box::new(move |mut headers: Headers| filter_groups(incl_keys2.clone(), &mut headers));
     let filter_func: FilterFunc =
         Box::new(move |headers: &Headers| key_geq_int("ports".to_string(), threshold, headers));
     create_epoch_operator(
@@ -200,7 +200,7 @@ fn ddos(next_op: OperatorRef) -> OperatorRef {
     )
 }
 
-fn syn_flood_sonata(next_op: OperatorRef) -> Vec<OperatorRef> {
+fn syn_flood_sonata(next_op: OperatorRef) -> [OperatorRef; 3] {
     let threshold: i32 = 3;
     let epoch_dur: f64 = 1.0;
 
@@ -211,8 +211,8 @@ fn syn_flood_sonata(next_op: OperatorRef) -> Vec<OperatorRef> {
                 get_mapped_int("ipv4.proto".to_string(), &headers) == 6
                     && get_mapped_int("l4.flags".to_string(), &headers) == 2
             });
-            let groupby_func: GroupingFunc = Box::new(move |headers: Headers| {
-                filter_groups(incl_keys.clone(), &mut headers.clone())
+            let groupby_func: GroupingFunc = Box::new(move |mut headers: Headers| {
+                filter_groups(incl_keys.clone(), &mut headers)
             });
             create_epoch_operator(
                 epoch_dur,
@@ -236,8 +236,8 @@ fn syn_flood_sonata(next_op: OperatorRef) -> Vec<OperatorRef> {
                 get_mapped_int("ipv4.proto".to_string(), &headers) == 6
                     && get_mapped_int("l4.flags".to_string(), &headers) == 16
             });
-            let groupby_func: GroupingFunc = Box::new(move |headers: Headers| {
-                filter_groups(incl_keys.clone(), &mut headers.clone())
+            let groupby_func: GroupingFunc = Box::new(move |mut headers: Headers| {
+                filter_groups(incl_keys.clone(), &mut headers)
             });
             create_epoch_operator(
                 epoch_dur,
@@ -261,8 +261,8 @@ fn syn_flood_sonata(next_op: OperatorRef) -> Vec<OperatorRef> {
                 get_mapped_int("ipv4.proto".to_string(), &headers) == 6
                     && get_mapped_int("l4.flags".to_string(), &headers) == 18
             });
-            let groupby_func: GroupingFunc = Box::new(move |headers: Headers| {
-                filter_groups(incl_keys.clone(), &mut headers.clone())
+            let groupby_func: GroupingFunc = Box::new(move |mut headers: Headers| {
+                filter_groups(incl_keys.clone(), &mut headers)
             });
             create_epoch_operator(
                 epoch_dur,
@@ -279,110 +279,328 @@ fn syn_flood_sonata(next_op: OperatorRef) -> Vec<OperatorRef> {
             )
         });
 
-    let mut first_join_ops: Box<
-        dyn FnMut(OperatorRef) -> (OperatorRef, OperatorRef)
-            + 'static,
-    > = Box::new(move |next_op: OperatorRef| {
-        let incl_keys: Vec<String> = Vec::from(["host".to_string()]);
-        let incl_keys2: Vec<String> = Vec::from(["syns+synacks".to_string()]);
-        let incl_keys3: Vec<String> = Vec::from(["acks".to_string()]);
-        let left_extractor_func: Box<dyn FnMut(Headers) -> (Headers, Headers) + 'static> =
-            Box::new(move |headers: Headers| {
-                (
-                    filter_groups(incl_keys.clone(), &mut headers.clone()),
-                    filter_groups(incl_keys2.clone(), &mut headers.clone()),
-                )
-            });
-        let right_extractor_func: Box<dyn FnMut(Headers) -> (Headers, Headers) + 'static> =
-            Box::new(move |headers: Headers| {
-                (
-                    rename_filtered_keys(
-                        Vec::from([("ipv4.dst".to_string(), "host".to_string())]),
-                        &mut headers.clone(),
-                    ),
-                    filter_groups(incl_keys3.clone(), &mut headers.clone()),
-                )
-            });
-        let mapping_func: Box<dyn Fn(Headers) -> Headers + 'static> =
-            Box::new(move |headers: Headers| {
-                headers
-                    .clone()
-                    .insert(
-                        "syns+synacks".to_string(),
-                        utils::OpResult::Int(get_mapped_int("acks".to_string(), &headers)),
+    let mut first_join_ops: Box<dyn FnMut(OperatorRef) -> (OperatorRef, OperatorRef) + 'static> =
+        Box::new(move |next_op: OperatorRef| {
+            let incl_keys: Vec<String> = Vec::from(["host".to_string()]);
+            let incl_keys2: Vec<String> = Vec::from(["syns+synacks".to_string()]);
+            let incl_keys3: Vec<String> = Vec::from(["acks".to_string()]);
+            let left_extractor_func: Box<dyn FnMut(Headers) -> (Headers, Headers) + 'static> =
+                Box::new(move |mut headers: Headers| {
+                    (
+                        filter_groups(incl_keys.clone(), &mut headers),
+                        filter_groups(incl_keys2.clone(), &mut headers),
                     )
-                    .unwrap();
-                headers
-            });
-        let filter_func: FilterFunc = Box::new(move |headers: &Headers| {
-            key_geq_int("syns+synacks-acks".to_string(), threshold, headers)
-        });
-        create_join_operator(
-            None,
-            left_extractor_func,
-            right_extractor_func,
-            create_map_operator(mapping_func, create_filter_operator(filter_func, next_op)),
-        )
-    });
-
-    let mut second_join_ops: Box<
-        dyn FnMut(OperatorRef) -> (OperatorRef, OperatorRef)
-            + 'static,
-    > = Box::new(move |next_op: OperatorRef| {
-        let incl_keys: Vec<String> = Vec::from(["syns".to_string()]);
-        let incl_keys2: Vec<String> = Vec::from(["synacks".to_string()]);
-        let left_extractor_func: Box<dyn FnMut(Headers) -> (Headers, Headers) + 'static> =
-            Box::new(move |headers: Headers| {
-                (
-                    rename_filtered_keys(
-                        Vec::from([("ipv4.dst".to_string(), "host".to_string())]),
-                        &mut headers.clone(),
-                    ),
-                    filter_groups(incl_keys.clone(), &mut headers.clone()),
-                )
-            });
-        let right_extractor_func: Box<dyn FnMut(Headers) -> (Headers, Headers) + 'static> =
-            Box::new(move |headers: Headers| {
-                (
-                    rename_filtered_keys(
-                        Vec::from([("ipv4.src".to_string(), "host".to_string())]),
-                        &mut headers.clone(),
-                    ),
-                    filter_groups(incl_keys2.clone(), &mut headers.clone()),
-                )
-            });
-        let mapping_func: Box<dyn Fn(Headers) -> Headers + 'static> =
-            Box::new(move |headers: Headers| {
-                headers
-                    .clone()
-                    .insert(
-                        "syns+synacks".to_string(),
-                        utils::OpResult::Int(
-                            get_mapped_int("syns".to_string(), &headers)
-                                + get_mapped_int("synacks".to_string(), &headers),
+                });
+            let right_extractor_func: Box<dyn FnMut(Headers) -> (Headers, Headers) + 'static> =
+                Box::new(move |mut headers: Headers| {
+                    (
+                        rename_filtered_keys(
+                            Vec::from([("ipv4.dst".to_string(), "host".to_string())]),
+                            &mut headers.clone(),
                         ),
+                        filter_groups(incl_keys3.clone(), &mut headers),
                     )
-                    .unwrap();
-                headers
+                });
+            let mapping_func: Box<dyn Fn(Headers) -> Headers + 'static> =
+                Box::new(move |mut headers: Headers| {
+                    headers
+                        .insert(
+                            "syns+synacks".to_string(),
+                            utils::OpResult::Int(get_mapped_int("acks".to_string(), &headers)),
+                        )
+                        .unwrap();
+                    headers
+                });
+            let filter_func: FilterFunc = Box::new(move |headers: &Headers| {
+                key_geq_int("syns+synacks-acks".to_string(), threshold, headers)
             });
-        create_join_operator(
-            None,
-            left_extractor_func,
-            right_extractor_func,
-            create_map_operator(mapping_func, next_op),
-        )
-    });
+            create_join_operator(
+                None,
+                left_extractor_func,
+                right_extractor_func,
+                create_map_operator(mapping_func, create_filter_operator(filter_func, next_op)),
+            )
+        });
+
+    let mut second_join_ops: Box<dyn FnMut(OperatorRef) -> (OperatorRef, OperatorRef) + 'static> =
+        Box::new(move |next_op: OperatorRef| {
+            let incl_keys: Vec<String> = Vec::from(["syns".to_string()]);
+            let incl_keys2: Vec<String> = Vec::from(["synacks".to_string()]);
+            let left_extractor_func: Box<dyn FnMut(Headers) -> (Headers, Headers) + 'static> =
+                Box::new(move |mut headers: Headers| {
+                    (
+                        rename_filtered_keys(
+                            Vec::from([("ipv4.dst".to_string(), "host".to_string())]),
+                            &mut headers.clone(),
+                        ),
+                        filter_groups(incl_keys.clone(), &mut headers),
+                    )
+                });
+            let right_extractor_func: Box<dyn FnMut(Headers) -> (Headers, Headers) + 'static> =
+                Box::new(move |mut headers: Headers| {
+                    (
+                        rename_filtered_keys(
+                            Vec::from([("ipv4.src".to_string(), "host".to_string())]),
+                            &mut headers.clone(),
+                        ),
+                        filter_groups(incl_keys2.clone(), &mut headers),
+                    )
+                });
+            let mapping_func: Box<dyn Fn(Headers) -> Headers + 'static> =
+                Box::new(move |mut headers: Headers| {
+                    headers
+                        .insert(
+                            "syns+synacks".to_string(),
+                            utils::OpResult::Int(
+                                get_mapped_int("syns".to_string(), &headers)
+                                    + get_mapped_int("synacks".to_string(), &headers),
+                            ),
+                        )
+                        .unwrap();
+                    headers
+                });
+            create_join_operator(
+                None,
+                left_extractor_func,
+                right_extractor_func,
+                create_map_operator(mapping_func, next_op),
+            )
+        });
 
     let (join_op1, join_op2) = first_join_ops(next_op);
     let (join_op3, join_op4) = second_join_ops(join_op1);
 
-    Vec::from([syns(join_op3), synacks(join_op4), acks(join_op2)])
+    [syns(join_op3), synacks(join_op4), acks(join_op2)]
 }
 
-fn completed_flows(next_op: OperatorRef) -> OperatorRef {
+fn completed_flows(next_op: OperatorRef) -> [OperatorRef; 2] {
     let threshold: i32 = 1;
     let epoch_dur: f64 = 30.0;
-    let syns: Rc<
+    let mut syns: Box<dyn FnMut(OperatorRef) -> OperatorRef + 'static> =
+        Box::new(move |next_op: OperatorRef| {
+            let incl_keys: Vec<String> = Vec::from(["ipv4.dst".to_string()]);
+            let filter_func: FilterFunc = Box::new(move |headers: &Headers| {
+                get_mapped_int("ipv4.proto".to_string(), &headers) == 6
+                    && get_mapped_int("l4.flags".to_string(), &headers) == 2
+            });
+            let groupby_func: GroupingFunc = Box::new(move |mut headers: Headers| {
+                filter_groups(incl_keys.clone(), &mut headers)
+            });
+            create_epoch_operator(
+                epoch_dur,
+                "eid".to_string(),
+                create_filter_operator(
+                    filter_func,
+                    create_groupby_operator(
+                        groupby_func,
+                        Box::new(counter),
+                        "syns".to_string(),
+                        next_op,
+                    ),
+                ),
+            )
+        });
+
+    let mut fins: Box<dyn FnMut(OperatorRef) -> OperatorRef + 'static> =
+        Box::new(move |next_op: OperatorRef| {
+            let incl_keys: Vec<String> = Vec::from(["ipv4.src".to_string()]);
+            let filter_func: FilterFunc = Box::new(move |headers: &Headers| {
+                get_mapped_int("ipv4.proto".to_string(), &headers) == 6
+                    && ((get_mapped_int("l4.flags".to_string(), &headers) & 1) == 1)
+            });
+            let groupby_func: GroupingFunc = Box::new(move |mut headers: Headers| {
+                filter_groups(incl_keys.clone(), &mut headers)
+            });
+            create_epoch_operator(
+                epoch_dur,
+                "eid".to_string(),
+                create_filter_operator(
+                    filter_func,
+                    create_groupby_operator(
+                        groupby_func,
+                        Box::new(counter),
+                        "fins".to_string(),
+                        next_op,
+                    ),
+                ),
+            )
+        });
+
+    let mut create_join_ops: Box<dyn FnMut(OperatorRef) -> (OperatorRef, OperatorRef) + 'static> =
+        Box::new(move |next_op: OperatorRef| {
+            let incl_keys: Vec<String> = Vec::from(["syns".to_string()]);
+            let left_extractor_func: Box<dyn FnMut(Headers) -> (Headers, Headers) + 'static> =
+                Box::new(move |mut headers: Headers| {
+                    (
+                        rename_filtered_keys(
+                            Vec::from([("ipv4.dst".to_string(), "host".to_string())]),
+                            &mut headers,
+                        ),
+                        filter_groups(incl_keys.clone(), &mut headers),
+                    )
+                });
+            let right_extractor_func: Box<dyn FnMut(Headers) -> (Headers, Headers) + 'static> =
+                Box::new(move |mut headers: Headers| {
+                    let incl_keys2: Vec<String> = Vec::from(["fins".to_string()]);
+                    (
+                        rename_filtered_keys(
+                            Vec::from([("ipv4.src".to_string(), "host".to_string())]),
+                            &mut headers,
+                        ),
+                        filter_groups(incl_keys2.clone(), &mut headers),
+                    )
+                });
+            let mapping_func: Box<dyn Fn(Headers) -> Headers + 'static> =
+                Box::new(move |mut headers: Headers| {
+                    headers
+                        .insert(
+                            "diff".to_string(),
+                            utils::OpResult::Int(get_mapped_int("syns".to_string(), &headers)),
+                        )
+                        .unwrap();
+                    headers
+                });
+            let filter_func: FilterFunc = Box::new(move |headers: &Headers| {
+                key_geq_int("diff".to_string(), threshold, headers)
+            });
+            create_join_operator(
+                None,
+                left_extractor_func,
+                right_extractor_func,
+                create_map_operator(mapping_func, create_filter_operator(filter_func, next_op)),
+            )
+        });
+    let (join_op1, join_op2) = create_join_ops(next_op);
+
+    [syns(join_op1), fins(join_op2)]
+}
+
+fn slowloris(next_op: OperatorRef) -> [OperatorRef; 2] {
+    let t1: i32 = 5;
+    let t2: i32 = 500;
+    let t3: i32 = 90;
+    let epoch_dur: f64 = 1.0;
+
+    let mut n_conns: Box<dyn FnMut(OperatorRef) -> OperatorRef + 'static> =
+        Box::new(move |next_op: OperatorRef| {
+            let incl_keys: Vec<String> = Vec::from([
+                "ipv4.src".to_string(),
+                "ipv4.dst".to_string(),
+                "l4.sport".to_string(),
+            ]);
+            let incl_keys2: Vec<String> = Vec::from(["ipv4.dst".to_string()]);
+            let filter_func: FilterFunc = Box::new(move |headers: &Headers| {
+                get_mapped_int("ipv4.proto".to_string(), &headers) == 6
+            });
+            let filter_func2: FilterFunc = Box::new(move |headers: &Headers| {
+                get_mapped_int("n_conns".to_string(), &headers) >= t1
+            });
+            let groupby_func: GroupingFunc = Box::new(move |mut headers: Headers| {
+                filter_groups(incl_keys.clone(), &mut headers)
+            });
+            let groupby_func2: GroupingFunc = Box::new(move |mut headers: Headers| {
+                filter_groups(incl_keys2.clone(), &mut headers)
+            });
+            create_epoch_operator(
+                epoch_dur,
+                "eid".to_string(),
+                create_filter_operator(
+                    filter_func,
+                    create_distinct_operator(
+                        groupby_func,
+                        create_groupby_operator(
+                            groupby_func2,
+                            Box::new(counter),
+                            "n_conns".to_string(),
+                            create_filter_operator(filter_func2, next_op),
+                        ),
+                    ),
+                ),
+            )
+        });
+
+    let mut n_bytes: Box<dyn FnMut(OperatorRef) -> OperatorRef + 'static> =
+        Box::new(move |next_op: OperatorRef| {
+            let incl_keys: Vec<String> = Vec::from(["ipv4.dst".to_string()]);
+            let filter_func: FilterFunc = Box::new(move |headers: &Headers| {
+                get_mapped_int("ipv4.proto".to_string(), &headers) == 6
+            });
+            let filter_func2: FilterFunc = Box::new(move |headers: &Headers| {
+                get_mapped_int("n_bytes".to_string(), &headers) >= t2
+            });
+            let groupby_func: GroupingFunc = Box::new(move |mut headers: Headers| {
+                filter_groups(incl_keys.clone(), &mut headers)
+            });
+            let reduce_func: ReductionFunc =
+                Box::new(move |init_val: OpResult, mut headers: &mut Headers| {
+                    sum_ints("ipv4.len".to_string(), init_val, headers).unwrap()
+                });
+            create_epoch_operator(
+                epoch_dur,
+                "eid".to_string(),
+                create_filter_operator(
+                    filter_func,
+                    create_groupby_operator(
+                        groupby_func,
+                        reduce_func,
+                        "n_bytes".to_string(),
+                        create_filter_operator(filter_func2, next_op),
+                    ),
+                ),
+            )
+        });
+
+    let mut create_join_ops: Box<dyn FnMut(OperatorRef) -> (OperatorRef, OperatorRef) + 'static> =
+        Box::new(move |next_op: OperatorRef| {
+            let left_extractor_func: Box<dyn FnMut(Headers) -> (Headers, Headers) + 'static> =
+                Box::new(move |mut headers: Headers| {
+                    let incl_keys: Vec<String> = Vec::from(["ipv4.dst".to_string()]);
+                    let incl_keys2: Vec<String> = Vec::from(["n_conns".to_string()]);
+                    (
+                        filter_groups(incl_keys.clone(), &mut headers),
+                        filter_groups(incl_keys2.clone(), &mut headers),
+                    )
+                });
+            let right_extractor_func: Box<dyn FnMut(Headers) -> (Headers, Headers) + 'static> =
+                Box::new(move |mut headers: Headers| {
+                    let incl_keys: Vec<String> = Vec::from(["ipv4.dst".to_string()]);
+                    let incl_keys2: Vec<String> = Vec::from(["n_bytes".to_string()]);
+                    (
+                        filter_groups(incl_keys.clone(), &mut headers),
+                        filter_groups(incl_keys2.clone(), &mut headers),
+                    )
+                });
+            let mapping_func: Box<dyn Fn(Headers) -> Headers + 'static> =
+                Box::new(move |mut headers: Headers| {
+                    headers
+                        .insert(
+                            "bytes_per_conn".to_string(),
+                            utils::OpResult::Int(
+                                get_mapped_int("n_bytes".to_string(), &headers)
+                                    / get_mapped_int("n_conns".to_string(), &headers),
+                            ),
+                        )
+                        .unwrap();
+                    headers
+                });
+            let filter_func: FilterFunc = Box::new(move |headers: &Headers| {
+                get_mapped_int("bytes_per_conn".to_string(), headers) <= t3
+            });
+            create_join_operator(
+                None,
+                left_extractor_func,
+                right_extractor_func,
+                create_map_operator(mapping_func, create_filter_operator(filter_func, next_op)),
+            )
+        });
+        let (join_op1, join_op2) = create_join_ops(next_op);
+
+        [n_conns(join_op1), n_bytes(join_op2)]
+}
+
+fn create_join_operator_test(next_op: OperatorRef) -> OperatorRef {
+    let epoch_dur: f64 = 1.0;
+    let syns
 }
 
 fn main() {

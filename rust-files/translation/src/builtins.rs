@@ -160,8 +160,8 @@ pub fn create_epoch_operator(
 ) -> OperatorRef {
     let mut _epoch_boundary: f64 = 0.0;
     let mut eid: i32 = 0;
-    let key_out_cp: String = (*key_out.clone()).to_string();
-    let next_op_ref_clone = Rc::clone(&next_op);
+    let key_out_cp: String = (*key_out).to_string();
+    let next_op_ref = Rc::clone(&next_op);
 
     let next: Box<dyn FnMut(&mut Headers) + 'static> = Box::new(move |headers: &mut Headers| {
         let time: f64 = float_of_op_result(&headers.get("time").unwrap_or(&OpResult::Empty))
@@ -171,16 +171,15 @@ pub fn create_epoch_operator(
             _epoch_boundary = time + epoch_width;
         }
         while time >= _epoch_boundary {
-            let mut new_headers: Headers = headers.clone();
+            let new_headers: &mut Headers = headers;
             new_headers
                 .insert(key_out.clone(), OpResult::Int(eid))
                 .unwrap();
-            (next_op.borrow_mut().reset)(&mut new_headers);
+            (next_op.borrow_mut().reset)(new_headers);
             _epoch_boundary += epoch_width;
             eid += 1;
         }
-        let mut new_headers: Headers = headers.clone();
-        new_headers
+        headers
             .insert(key_out.clone(), OpResult::Int(eid))
             .unwrap();
         (next_op.borrow_mut().next)(headers)
@@ -189,7 +188,7 @@ pub fn create_epoch_operator(
     let reset: Box<dyn FnMut(&mut Headers) + 'static> = Box::new(move |_headers: &mut Headers| {
         let mut new_hmap: BTreeMap<String, OpResult> = BTreeMap::new();
         new_hmap.insert(key_out_cp.clone(), OpResult::Int(eid));
-        (next_op_ref_clone.borrow_mut().reset)(&mut new_hmap);
+        (next_op_ref.borrow_mut().reset)(&mut new_hmap);
         _epoch_boundary = 0.0;
         eid = 0;
     });
@@ -445,8 +444,8 @@ pub fn create_join_operator(
             let eid_key_ref2 = Rc::clone(&eid_key);
 
             let next: Box<dyn FnMut(&mut Headers) + 'static> =
-                Box::new(move |headers: &mut Headers| {
-                    let mut _headers_cp = &mut headers.clone();
+                Box::new(move |mut headers: &mut Headers| {
+                    let mut _headers_cp = &mut headers;
                     let (key, vals) = f(_headers_cp.clone());
                     let mut _curr_epoch: i32 =
                         get_mapped_int(eid_key.borrow_mut().clone(), headers);
