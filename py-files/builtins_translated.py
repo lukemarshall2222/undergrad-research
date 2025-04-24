@@ -25,14 +25,14 @@ class Operator():
 
 
 def update_operators(pipeline_method):
-    def wrapper(self: Pipeline, *args, **kwargs):
+    def wrapper(self: Query, *args, **kwargs):
         pipeline_method(self, *args, **kwargs)
         self.__set_next_and_reset()
         return self
     return wrapper
 
 
-class Pipeline():
+class Query():
     @update_operators
     def __init__(self, last_op: Operator | None) -> Self:
         self.__curr_op_pipeline: Operator = last_op if last_op is not None else self.dump(
@@ -96,10 +96,10 @@ class Pipeline():
         self.__curr_op_pipeline = self.__create_split_operator(l, r)
 
     def join(self, left_extractor: key_extractor, right_extractor: key_extractor, eid_key: str = "eid") \
-            -> tuple["Pipeline", "Pipeline"]:
+            -> tuple["Query", "Query"]:
         ops: tuple[Operator, Operator] = self.__create_join_operator(
             left_extractor, right_extractor, self.__curr_op_pipeline, eid_key)
-        return (Pipeline(ops[0]), Pipeline(ops[1]))
+        return (Query(ops[0]), Query(ops[1]))
 
     def __create_dump_operator(self, outc: TextIO, show_reset: bool = False) -> "Operator":
         next: Callable[[PacketHeaders],
@@ -385,7 +385,7 @@ class OpUtils():
                 return Int(0)
             case s:
                 return Ipv4(IPv4Address(s))
-                
+
     @staticmethod
     def remove_keys(packet: PacketHeaders) -> PacketHeaders:
         return PacketHeaders({key: val for key, val in packet.items()

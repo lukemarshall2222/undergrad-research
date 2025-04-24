@@ -1,20 +1,19 @@
 from utils_translated import *
-from builtins_translated import OpUtils, Pipeline, Operator
+from builtins_translated import OpUtils, Query, Operator
 from functools import partial
 import sys
 from typing import cast
 
-ident = Pipeline()\
+ident = Query()\
             .map(OpUtils.remove_keys)
 ident_next = ident.next
 ident_reset = ident.reset
 
-
-def count_pkts(next_op: Operator) -> Operator:
-    return \
-    Op_to_op(create_epoch_operator, 1.0, "eid") \
-    >> (Op_to_op(create_groupby_operator, single_group, counter, "pkts") \
-    >> next_op)
+count_pkts = Query() \
+                .epoch(1.0, "eid") \
+                .groupby(OpUtils.single_group, OpUtils.counter, "pkts")
+count_pkts_next = count_pkts.next
+count_pkts_reset = count_pkts.reset
 
 def pkts_per_src_dst(next_op: Operator) -> Operator:
     return \
