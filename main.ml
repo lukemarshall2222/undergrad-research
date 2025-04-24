@@ -144,23 +144,11 @@ let syn_flood_sonata (next_op: operator) : operator list =
     in [syns @=> join_op3 ; synacks @=> join_op4 ; acks @=> join_op2]
     
 
-
-
-
-
-
-
-
-
-
-
-
-
 (* Sonata 7 *)
 let completed_flows (next_op: operator) : operator list =
     let threshold: int = 1 in
     let epoch_dur: float = 30.0 in
-    let syns (next_op: operator) : operator=
+    let syns (next_op: operator) : operator =
         (create_epoch_operator epoch_dur "eid")
         @=> (create_filter_operator (fun (tup: tuple)->
                         (get_mapped_int "ipv4.proto" tup) = 6 &&
@@ -204,7 +192,7 @@ let slowloris (next_op: operator) : operator list =
         @=> (create_groupby_operator (filter_groups ["ipv4.dst"]) counter "n_conns")
         @=> (create_filter_operator (fun (tup: tuple) -> 
                         (get_mapped_int "n_conns" tup) >= t1))
-        @=> next_op
+        @=> next_op 
     in let n_bytes (next_op: operator) : operator=
         (create_epoch_operator epoch_dur "eid")
         @=> (create_filter_operator (fun (tup: tuple) -> 
@@ -213,7 +201,7 @@ let slowloris (next_op: operator) : operator list =
                                         (sum_ints "ipv4.len") "n_bytes")
         @=> (create_filter_operator (fun (tup: tuple) -> 
                         (get_mapped_int "n_bytes" tup) >= t2))
-        @=> next_op
+        @=> next_op 
     in let op1, op2 =
         (create_join_operator
             (fun (tup: tuple) -> (filter_groups ["ipv4.dst"] tup, 
@@ -241,7 +229,7 @@ let create_join_operator_test (next_op: operator) : operator list =
         @=> (create_filter_operator (fun (tup: tuple) ->
                         (get_mapped_int "ipv4.proto" tup) = 6 &&
                         (get_mapped_int "l4.flags" tup) = 18))
-        @=> next_op
+        @=> next_op    
     in let op1, op2 =
         (create_join_operator
             (fun (tup: tuple) -> ((rename_filtered_keys [("ipv4.src","host")] tup), 
@@ -250,7 +238,7 @@ let create_join_operator_test (next_op: operator) : operator list =
                         (filter_groups ["time"] tup))))
         @==> next_op
     in [syns @=> op1 ; synacks @=> op2]
-
+    
 let q3 (next_op: operator) : operator =
     (create_epoch_operator 100.0 "eid")
     @=> create_distinct_operator (filter_groups ["ipv4.src" ; "ipv4.dst"])

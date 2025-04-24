@@ -42,9 +42,9 @@ let ( @=> ) (op_creator_func: op_creator) (next_op: operator)
         : operator 
     = op_creator_func next_op
 (* e.g. 
-    (epoch 1.0 "eid") @=> (groupby single_group count "pkts") @=> k 
+    (epoch 1.0 "eid") @=> (groupby single_group count "pkts") @=> next_op 
 instead of: 
-    k (groupby single_group count "pkts" (epoch 1.0 "eid")) *)
+    (epoch 1.0 "eid" (groupby single_group count "pkts" ) next_op) *)
 
 let ( @==> ) (op_creator_func: dbl_op_creator) (op: operator) : 
             (operator * operator) = op_creator_func op

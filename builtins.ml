@@ -59,8 +59,10 @@ let dump_as_csv ?(static_field:(string*string)option = None) ?(header=true)
     }
 
 (*
- * Dumps csv in Walt's canonical csv format: src_ip, dst_ip, src_l4_port, dst_l4_port, packet_count, byte_count, epoch_id
- * Unused fields are zeroed, map packet length to src_l4_port for ssh brute force
+ * Dumps csv in Walt's canonical csv format: src_ip, dst_ip, src_l4_port, 
+ * dst_l4_port, packet_count, byte_count, epoch_id
+ * Unused fields are zeroed, map packet length to src_l4_port for ssh brute 
+ * force
  *)
 let dump_walts_csv (filename: string) : operator =
     let outc: out_channel ref = ref stdout in

@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from ipaddress import IPv4Address
 from collections import deque
 from functools import partial
-from builtins_translated import Operator
 
 type op_result_type = Union[float, int, IPv4Address, bytearray, None]
 
@@ -14,7 +13,7 @@ class Op_result(ABC):
     val: op_result_type = None
 
     def __hash__(self): 
-        return hash(self.val)
+        return hash((self.kind, self.val))
 
 @dataclass
 class Float(Op_result):
@@ -39,16 +38,16 @@ class Empty(Op_result):
 
 class PacketHeaders:
     def __init__(self, data: dict[str, Op_result] | None=None):
-        self.headers: dict[str, 'Op_result'] | None = data if data is not None else {}
+        self.data: dict[str, 'Op_result'] | None = data if data is not None else {}
 
     def __iter__(self):
-        return iter(self.headers)
+        return iter(self.data)
     
     def __getitem__(self, key: str):
         if not isinstance(key, str):
             raise TypeError("Packet keys may only be strings.")
         else:
-            return self.headers[key]
+            return self.data[key]
     
     def __setitem__(self, key: str, val: Op_result):
         if not isinstance(key, str):
@@ -56,52 +55,45 @@ class PacketHeaders:
         elif not isinstance(val, Op_result):
             raise TypeError("Packet values may only be Op_results.")
         else: 
-            self.headers[key] = val
+            self.data[key] = val
         return self
     
     def items(self) -> ItemsView[str, Op_result]:
-        return self.headers.items()
+        return self.data.items()
     
     def __hash__(self):
-        return hash(frozenset(self.headers.items()))
+        return hash(frozenset(self.data.items()))
     
     def __or__(self, other: 'PacketHeaders') -> 'PacketHeaders':
         if not isinstance(other, PacketHeaders):
             raise TypeError("Packets may only be unioned with other Packets.")
-        return PacketHeaders(self.headers.__or__(other.headers))
+        return PacketHeaders(self.data.__or__(other.data))
     
     def get(self, key: str, default=None):
         if not isinstance(key, str):
             raise TypeError("Packet keys may only be strings.")
-        return self.headers.get(key, default)
+        return self.data.get(key, default)
     
     def get_mapped_int(self, key: str) -> int:
         if not isinstance(key, str):
             raise TypeError("Packet keys may only be strings.")
-        return int_of_op_result(self.headers[key])
+        return int_of_op_result(self.data[key])
     
     def get_mapped_float(self, key: str) -> float:
         if not isinstance(key, str):
             raise TypeError("Packet keys may only be strings.")
-        return float_of_op_result(self.headers[key])
-    
-    def string_of_packet(self) -> str:
-        return "".join(f'"{key}" => {string_of_op_result(val)}, ' 
-                   for key, val in self.headers)
-        
-    def packet_of_list(self, packet_list: deque[tuple[str, Op_result]]) -> "PacketHeaders":
-        self.headers = {key: val for key, val in list(packet_list)}
+        return float_of_op_result(self.data[key])
 
-    def dump_packet(self, outc: TextIO) -> None:
-        print(self.string_of_packet())
 
-    def lookup_int(self, key: str) -> int:
-        return int_of_op_result(self.headers[key])
-
-    def lookup_float(self, key: str) -> float:
-        return float_of_op_result(self.headers[key])
-    
-
+class Operator(ABC):
+    def __init__(self, next: Callable[[PacketHeaders], None], 
+                 reset: Callable[[PacketHeaders], None]):
+        self.next = next
+        self.reset = reset
+    def next(packet: PacketHeaders) -> None:
+        raise NotImplementedError("next method not implemented in base class.")
+    def reset(packet: PacketHeaders) -> None:
+        raise NotImplementedError("reset method not implemented in base class.")
 
 class Op_to_op:
     def __init__(self, func: Callable[[any], Operator], *args):
@@ -161,3 +153,19 @@ def string_of_op_result(input: Op_result) -> str:
         case _:
             raise RuntimeError("Reached unreachable code")
         
+def string_of_packet(input_packet: PacketHeaders) -> str:
+    return "".join(f'"{key}" => {string_of_op_result(val)}, ' 
+                   for key, val in input_packet)
+        
+def packet_of_list(packet_list: deque[tuple[str, Op_result]]) -> PacketHeaders:
+    return PacketHeaders({key: val for key, val in list(packet_list)})
+
+def dump_packet(outc: TextIO, packet: PacketHeaders) -> None:
+    print(string_of_packet(packet), outc)
+
+def lookup_int(key: str, packet: PacketHeaders) -> int:
+    return int_of_op_result(packet[key])
+
+def lookup_float(key: str, packet: PacketHeaders) -> float:
+    return float_of_op_result(packet[key])
+

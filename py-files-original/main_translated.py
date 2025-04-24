@@ -1,14 +1,16 @@
 from utils_translated import *
-from builtins_translated import OpUtils, Pipeline, Operator
+from builtins_translated import *
 from functools import partial
 import sys
 from typing import cast
 
-ident = Pipeline()\
-            .map(OpUtils.remove_keys)
-ident_next = ident.next
-ident_reset = ident.reset
-
+def ident(next_op: Operator) -> Operator:
+    def remove_keys(packet: PacketHeaders) -> PacketHeaders:
+        return PacketHeaders({key: val for key, val in packet.items()
+                       if key != "eth.src" and key != "eth.dst"})
+    return \
+    Op_to_op(create_map_operator, remove_keys) \
+    >> next_op
 
 def count_pkts(next_op: Operator) -> Operator:
     return \
