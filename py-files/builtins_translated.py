@@ -17,8 +17,8 @@ class Query():
     def __init__(self, last_op: QueryMethods | None = None) -> Self:
         match last_op:
             case QueryMethods(next, reset):
-                self.next = next
-                self.reset = reset
+                self.next = MethodType(next)
+                self.reset = MethodType(reset)
             case None:
                 self.dump(stdout)
             case catchall:
@@ -40,8 +40,8 @@ class Query():
                 print("[reset]\n", file=outc)
             return None
 
-        self.next = next
-        self.reset = reset
+        self.next = MethodType(next)
+        self.reset = MethodType(reset)
         return self
 
     def dump_as_csv(self, outc: TextIO, static_field: Optional[tuple[str, str]] = None,
@@ -68,8 +68,8 @@ class Query():
 
         reset: QueryMethod = lambda _: None
 
-        self.next = next
-        self.reset = reset
+        self.next = MethodType(next)
+        self.reset = MethodType(reset)
         return self
 
     def dump_as_waltz_csv(self, filename: str) -> Self:
@@ -93,15 +93,15 @@ class Query():
 
         reset: QueryMethod = lambda _: None
 
-        self.next = next
-        self.reset = reset
+        self.next = MethodType(next)
+        self.reset = MethodType(reset)
         return self
 
     def meta_meter(self, name: str, outc: TextIO, static_field: str | None = None) -> Self:
         epoch_count: int = 0
         packet_count: int = 0
-        curr_next = MethodType(self.next.__func__)
-        curr_reset = MethodType(self.reset.__func__)
+        curr_next: QueryMethod = self.next.__func__
+        curr_reset: QueryMethod = self.reset.__func__
 
         def next(packet: PacketHeaders) -> None:
             nonlocal packet_count
@@ -117,15 +117,15 @@ class Query():
             epoch_count += 1
             curr_reset(packet)
 
-        self.next = next
-        self.reset = reset
+        self.next = MethodType(next)
+        self.reset = MethodType(reset)
         return self
 
     def epoch(self, epoch_width: float, key_out: str) -> Self:
         epoch_boundary: float = 0.0
         eid: int = 0
-        curr_next = MethodType(self.next.__func__)
-        curr_reset = MethodType(self.reset.__func__)
+        curr_next: QueryMethod = self.next.__func__
+        curr_reset: QueryMethod = self.reset.__func__
 
         def next(packet: PacketHeaders) -> None:
             nonlocal epoch_boundary, eid
@@ -145,13 +145,13 @@ class Query():
             epoch_boundary = 0.0
             eid = 0
 
-        self.next = next
-        self.reset = reset
+        self.next = MethodType(next)
+        self.reset = MethodType(reset)
         return self
 
     def filter(self, f: Callable[[PacketHeaders], bool]) -> Self:
-        curr_next = MethodType(self.next.__func__)
-        curr_reset = MethodType(self.reset.__func__)
+        curr_next: QueryMethod = self.next.__func__
+        curr_reset: QueryMethod = self.reset.__func__
 
         def next(packet: PacketHeaders) -> None:
             if f(packet):
@@ -159,26 +159,26 @@ class Query():
 
         reset: QueryMethod = lambda packet: curr_reset(packet)
 
-        self.next = next
-        self.reset = reset
+        self.next = MethodType(next)
+        self.reset = MethodType(reset)
         return self
 
     def map(self, f: Callable[[PacketHeaders], PacketHeaders]) -> Self:
-        curr_next = MethodType(self.next.__func__)
-        curr_reset = MethodType(self.reset.__func__)
+        curr_next: QueryMethod = self.next.__func__
+        curr_reset: QueryMethod = self.reset.__func__
 
         next: QueryMethod = lambda packet: curr_next(f(packet))
         reset: QueryMethod = lambda packet: curr_reset(packet)
 
-        self.next = next
-        self.reset = reset
+        self.next = MethodType(next)
+        self.reset = MethodType(reset)
         return self
 
     def groupby(self, group_packet: GroupingFunc, reduce: ReductionFunc, out_key: str) -> Self:
         h_tbl: dict[PacketHeaders, Op_result] = {}
         reset_counter: int = 0
-        curr_next = MethodType(self.next.__func__)
-        curr_reset = MethodType(self.reset.__func__)
+        curr_next: QueryMethod = self.next.__func__
+        curr_reset: QueryMethod = self.reset.__func__
 
         def next(packet: PacketHeaders) -> None:
             grouping_key: PacketHeaders = group_packet(packet)
@@ -197,15 +197,15 @@ class Query():
             curr_reset(packet)
             h_tbl.clear()
 
-        self.next = next
-        self.reset = reset
+        self.next = MethodType(next)
+        self.reset = MethodType(reset)
         return self
 
     def distinct(self, group_packet: GroupingFunc) -> Self:
         h_tbl: dict[PacketHeaders, bool] = {}
         reset_counter: int = 0
-        curr_next = MethodType(self.next.__func__)
-        curr_reset = MethodType(self.reset.__func__)
+        curr_next: QueryMethod = self.next.__func__
+        curr_reset: QueryMethod = self.reset.__func__
 
         def next(packet: PacketHeaders) -> None:
             grouping_key: PacketHeaders = group_packet(packet)
@@ -219,22 +219,22 @@ class Query():
             curr_reset(packet)
             h_tbl.clear()
 
-        self.next = next
-        self.reset = reset
+        self.next = MethodType(next)
+        self.reset = MethodType(reset)
         return self
 
     def split(self, l: "Query", r: "Query") -> Self:
 
         def next(packet: PacketHeaders) -> None:
-            l[0](packet)
-            r[0](packet)
+            l.next(packet)
+            r.next(packet)
 
         def reset(packet: PacketHeaders) -> None:
-            l[1](packet)
-            r[1](packet)
+            l.reset(packet)
+            r.reset(packet)
 
-        self.next = next
-        self.reset = reset
+        self.next = MethodType(next)
+        self.reset = MethodType(reset)
         return self
 
     def join(self, left_extractor: KeyExtractor, right_extractor: KeyExtractor,
@@ -243,8 +243,8 @@ class Query():
         h_tbl2: dict[PacketHeaders, PacketHeaders] = {}
         left_curr_epoch: int = 0
         right_curr_epoch: int = 0
-        curr_next = MethodType(self.next.__func__)
-        curr_reset = MethodType(self.reset.__func__)
+        curr_next: QueryMethod = self.next.__func__
+        curr_reset: QueryMethod = self.reset.__func__
 
         def handle_join_side(curr_h_tbl: dict[PacketHeaders, PacketHeaders],
                              other_h_tbl: dict[PacketHeaders, PacketHeaders],
