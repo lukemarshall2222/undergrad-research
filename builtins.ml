@@ -16,7 +16,7 @@ let init_table_size: int = 10000
 (* returns an operator record with two functions:
     next: dumps a given Tuple to the given output
     reset: prints a reset message if the given show_reset is true  *)
-let create_dump_operator ?(show_reset: bool=false) (outc: out_channel) 
+let dump_tuple ?(show_reset: bool=false) (outc: out_channel) 
             :  operator =
     {
         next = (fun (tup: tuple) -> dump_tuple outc tup);
@@ -156,7 +156,7 @@ let read_walts_csv ?(epoch_id_key="eid") (file_names: string list)
  * to the out_channel
  *)
 (* tracks how many tuples processed per epoch and logs it to outc *)
-let create_meta_meter ?(static_field: string option = None) (name: string) 
+let meta_meter ?(static_field: string option = None) (name: string) 
             (outc: out_channel) (next_op: operator): operator =
     let epoch_count: int ref = ref 0 in (* # of times reset has been called *)
     let tups_count: int ref = ref 0 in (* # of tuples processed before reset *)
@@ -178,7 +178,7 @@ let create_meta_meter ?(static_field: string option = None) (name: string)
  * Resets op every w seconds
  * Adds epoch id to tuple under key_out
  *)
-let create_epoch_operator (epoch_width: float) (key_out: string) 
+let epoch (epoch_width: float) (key_out: string) 
             (next_op: operator) : operator =
     let epoch_boundary: float ref = ref 0.0 in
     let eid: int ref = ref 0 in
@@ -209,7 +209,7 @@ let create_epoch_operator (epoch_width: float) (key_out: string)
  *)
 (* creates a filtering opterator, applying the given operator if this one 
     returns true otherwise returning false *)
-let create_filter_operator (f: (tuple -> bool)) 
+let filter (f: (tuple -> bool)) 
         (next_op: operator) : operator =
     {
         next = (fun (tup: tuple) -> if f tup then next_op.next tup ) ;
@@ -246,7 +246,7 @@ let get_mapped_float (key: string) (tup: tuple) : float =
  *)
  (* applies the given operator to the result of this operator applied to the 
  Tuple *)
-let create_map_operator (f: (tuple) -> (tuple)) (next_op: operator) : operator =
+let map (f: (tuple) -> (tuple)) (next_op: operator) : operator =
     {
         next = (fun (tup: tuple) -> next_op.next (f tup)) ;
         reset = (fun (tup: tuple) -> next_op.reset tup) ;
@@ -265,7 +265,7 @@ type reduction_func = op_result -> (tuple) -> op_result
  *   (ii) the result of g for that group, and
  *   (iii) a mapping from out_key to the result of the fold for that group
  *)
-let create_groupby_operator (groupby: grouping_func) (reduce: reduction_func) 
+let groupby (groupby: grouping_func) (reduce: reduction_func) 
                 (out_key: string) (next_op: operator) : operator =
     let h_tbl: ((tuple, op_result) Hashtbl.t) = 
                 Hashtbl.create init_table_size in
@@ -348,7 +348,7 @@ let sum_ints (search_key: string) (init_val: op_result)
  * Returns a list of distinct elements (as determined by group_tup) each epoch
  * removes duplicate Tuples based on group_tup
  *)
-let create_distinct_operator (groupby: grouping_func) 
+let distinct (groupby: grouping_func) 
         (next_op: operator) : operator =
     let h_tbl: (tuple, bool) Hashtbl.t = Hashtbl.create 
                                                     init_table_size in
@@ -373,7 +373,7 @@ let create_distinct_operator (groupby: grouping_func)
  * Just sends both next and reset directly to two different downstream operators
  * i.e. splits the stream processing in two
  *)
-let create_split_operator (l: operator) (r: operator) : operator =
+let split (l: operator) (r: operator) : operator =
     {
         next = (fun (tup: tuple) -> 
             (l.next tup ; r.next tup)) ;
@@ -387,11 +387,12 @@ type key_extractor = tuple -> (tuple * tuple)
  * Initial shot at a join semantic that doesn't require maintining entire state
  * Functions left and right transform input tuples into a key,value pair of tuples
  * The key determines a canonical tuple against which the other stream will match
- * The value determines extra fields which should be saved and added when a match is made
+ * The value determines extra fields which should be saved and added when a 
+ * match is made
  *
  * Requires tuples to have epoch id as int value in field referenced by eid_key.
  *)
-let create_join_operator ?(eid_key: string="eid") 
+let join ?(eid_key: string="eid") 
             (left_extractor : key_extractor) 
             (right_extractor : key_extractor) (next_op: operator) 
             : (operator*operator) =

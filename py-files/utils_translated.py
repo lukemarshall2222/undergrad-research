@@ -100,26 +100,6 @@ class PacketHeaders:
 
     def lookup_float(self, key: str) -> float:
         return float_of_op_result(self.headers[key])
-    
-
-
-class Op_to_op:
-    def __init__(self, func: Callable[[any], Operator], *args):
-        self.func = partial(func, *args)
-    def __rshift__(self, op: Operator) -> Operator:
-        if not isinstance(op, Operator):
-            raise TypeError(f"Can only apply an operator \
-                                argument to an Op_to_op.")
-        return self.func(op)
-
-class Op_to_op_tup(Op_to_op):
-    def __init__(self, func: Callable[[any], Operator], *args):
-        super().__init__(func, args)
-    def __rshift__(self, op: Operator) -> tuple[Operator, Operator]:
-        if not isinstance(op, Operator):
-            raise TypeError(f"Can only apply an operator \
-                                argument to an Op_to_op_tup.")
-        return self.func(op)
 
 def string_of_mac(buf: bytearray) -> str:
     return f"{buf[0]: .2f}:{buf[1]: .2f}:{buf[3]: .2f}:\
