@@ -14,11 +14,14 @@ QueryMethods = namedtuple('QueryMethods', ['next', 'reset'])
 
 
 class Query():
-    def __init__(self, last_op: QueryMethods | None = None) -> Self:
+    def __init__(self, last_op: QueryMethods | "Query" | None = None) -> Self:
         match last_op:
             case QueryMethods(next, reset):
-                self.next = MethodType(next)
-                self.reset = MethodType(reset)
+                self.next = MethodType(next.__func__)
+                self.reset = MethodType(reset.__func__)
+            case Query():
+                self.next = last_op.next.__func__
+                self.reset = last_op.reset.__func__
             case None:
                 self.dump(stdout)
             case catchall:
@@ -30,6 +33,9 @@ class Query():
 
     def reset(self, headers: PacketHeaders) -> None:
         raise NotImplementedError("reset method has not been assigned")
+
+    def collect(self) -> QueryMethods:
+        return QueryMethods(self.next.__func__, self.reset.__func__)
 
     def dump(self, outc: TextIO, show_reset: bool = False) -> Self:
         next: QueryMethod = lambda packet: packet.dump_packet(outc)
@@ -285,7 +291,6 @@ class Query():
             handle_join_side(h_tbl2, h_tbl1, right_curr_epoch,
                              left_curr_epoch, right_extractor)
         )
-
 
 def rename_filtered_keys(renaming_pairs: list[tuple[str, str]],
                          in_packet: PacketHeaders) -> PacketHeaders:
