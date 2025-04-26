@@ -53,11 +53,11 @@ def ssh_brute_force(next_op: Operator) -> Operator:
     return \
     Op_to_op(create_epoch_operator, 1.0, "eid") \
     >> (Op_to_op(create_filter_operator, partial(filter_helper, 6, 22)) \
-    >> (Op_to_op(create_filter_operator, 
+    >> (Op_to_op(create_distinct_operator, 
                 partial(filter_groups, 
                 ["ipv4.src", "ipv4.dst", "ipv4.len"])) \
     >> (Op_to_op(create_groupby_operator, 
-                partial(filter_groups, ["ipv4.dst", "ipv4.len"]),
+                partial(filter_groups, ["ipv4.src", "ipv4.dst", "ipv4.len"]),
                 counter, "srcs") \
     >> (Op_to_op(create_filter_operator, 
                 partial(key_geq_int, "srcs", threshold)) \
@@ -286,7 +286,7 @@ def create_join_operator_test(next_op: Operator) -> list[Operator]:
     operators: tuple[Operator, Operator] = \
         Op_to_op_tup(create_join_operator,
             (lambda packet: (rename_filtered_keys([("ipv4.src","host")], packet), 
-                        (rename_filtered_keys([("ipv4.dst","remote")], packet))))
+                        (rename_filtered_keys([("ipv4.dst","remote")], packet)))),
             (lambda packet: ((rename_filtered_keys([("ipv4.dst","host")], packet)), 
                         (filter_groups(["time"] , packet))))) \
         >> next_op

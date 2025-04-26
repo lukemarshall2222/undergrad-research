@@ -1,13 +1,12 @@
 
-from typing import Iterator, TextIO, ItemsView, Callable, Union
+from typing import Iterator, TextIO, ItemsView
 from abc import ABC
 from dataclasses import dataclass
 from ipaddress import IPv4Address
 from collections import deque
 from functools import partial
-from builtins_translated import Operator
 
-type op_result_type = Union[float, int, IPv4Address, bytearray, None]
+type op_result_type = float | int | IPv4Address | bytearray | None
 
 @dataclass
 class Op_result(ABC):
@@ -140,4 +139,15 @@ def string_of_op_result(input: Op_result) -> str:
             "Empty"
         case _:
             raise RuntimeError("Reached unreachable code")
+
+def unwrap_function(func):
+    if isinstance(func, partial):
+        func = func.func
+        args = func.args
+    else:
+        args = ()
+
+    func = getattr(func, "__func__", func)
+
+    return func, args
         
