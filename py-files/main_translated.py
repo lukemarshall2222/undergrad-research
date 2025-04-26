@@ -205,8 +205,8 @@ def slowloris(next_query: Query = Query().continue_flow()) -> list[QueryMethods]
     join_query1, join_query2 = join_queries
 
     return [
-        n_conns.add_query(join_query1),
-        n_bytes.add_query(join_query2),
+        n_conns.add_query(join_query1).collect(),
+        n_bytes.add_query(join_query2).collect(),
     ]
 
 

@@ -34,15 +34,18 @@ class NextToNext():
                 if len(args) == 2:
                     self.__method(*args)
                 else:
-                    raise TypeError("Inclomplete Query Method expects either an incomplete query" \
-                                    "method or a query method, and Packet Headers. The Query must " \
+                    raise TypeError("Inclomplete Query Method expects either an incomplete query"
+                                    "method or a query method, and Packet Headers. The Query must "
                                     "end with a dumping ")
             case FullQueryMethod():
                 if len(args) == 1:
                     self.__method(*args)
                 else:
                     raise TypeError(
-                        "Query Method expects Packet Headers as its only argument")
+                        "this query is full and expects Packet Headers as its only argument."
+                        "The query will then execute the prescribed operations")
+            case None:
+                raise NotImplementedError("Cannot call an empty query method")
 
     def add_op(self, query: "Query" | IncompleteQueryMethod | FullQueryMethod) -> Self:
         match self.__method:
@@ -107,7 +110,7 @@ class Query():
     def next(self, headers: PacketHeaders) -> None:
         if self.__next.is_empty():
             raise NotImplementedError("next method has not been assigned")
-        if 
+        if
         return self.__next(headers)
 
     def reset(self, headers: PacketHeaders) -> None:
@@ -189,7 +192,7 @@ class Query():
         self.__next.add_op(next)
         self.__reset.add_op(reset)
         return self
-    
+
     def end_query_abrupt(self):
         next: FullQueryMethod = lambda _: None
         reset: FullQueryMethod = lambda _: None
