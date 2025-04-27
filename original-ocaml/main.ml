@@ -120,6 +120,27 @@ let syn_flood_sonata (next_op: operator) : operator list =
         @=> (groupby (filter_groups ["ipv4.dst"]) 
                                         counter "acks")
         @=> next_op
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     in let (join_op1: operator), (join_op2: operator) =
         (join
             (fun (tup: tuple)-> ((filter_groups ["host"] tup), 
@@ -142,8 +163,6 @@ let syn_flood_sonata (next_op: operator) : operator list =
                     (get_mapped_int "synacks" tup))) tup))
         @=> join_op1
     in [syns @=> join_op3 ; synacks @=> join_op4 ; acks @=> join_op2]
-    
-
 (* Sonata 7 *)
 let completed_flows (next_op: operator) : operator list =
     let threshold: int = 1 in
@@ -176,6 +195,24 @@ let completed_flows (next_op: operator) : operator list =
         @=> (filter (key_geq_int "diff" threshold))
         @=> next_op
     in [syns @=> op1 ; fins @=> op2]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 (* Sonata 8 *)
 let slowloris (next_op: operator) : operator list =
@@ -215,7 +252,6 @@ let slowloris (next_op: operator) : operator list =
                         (get_mapped_int "bytes_per_conn" tup) <= t3))
         @=> next_op
     in [n_conns @=> op1 ; n_bytes @=> op2]
-
 let join_test (next_op: operator) : operator list =
     let epoch_dur: float = 1.0 in
     let syns (next_op: operator) : operator=
@@ -229,7 +265,7 @@ let join_test (next_op: operator) : operator list =
         @=> (filter (fun (tup: tuple) ->
                         (get_mapped_int "ipv4.proto" tup) = 6 &&
                         (get_mapped_int "l4.flags" tup) = 18))
-        @=> next_op    
+        @=> next_op   
     in let op1, op2 =
         (join
             (fun (tup: tuple) -> ((rename_filtered_keys [("ipv4.src","host")] tup), 
@@ -238,17 +274,15 @@ let join_test (next_op: operator) : operator list =
                         (filter_groups ["time"] tup))))
         @==> next_op
     in [syns @=> op1 ; synacks @=> op2]
-    
 let q3 (next_op: operator) : operator =
     (epoch 100.0 "eid")
     @=> distinct (filter_groups ["ipv4.src" ; "ipv4.dst"])
     @=> next_op
-
 let q4 (next_op: operator) : operator =
     (epoch 10000.0 "eid")
     @=> groupby (filter_groups ["ipv4.dst"]) counter "pkts"
     @=> next_op
-        
+
 let queries: operator list = [ident @=> dump_tuple stdout]
 
 let run_queries () = 
