@@ -349,21 +349,29 @@ function runQueries(): void {
     let headers: PacketHeaders[] = [];
     for (let i = 1; i <= 20; i++) {
         new Map<string, opResult>([
-            ["time", {kind: opResultKind.Float, val: i}],
-            ["eth.src", {kind: opResultKind.MAC, val: new Uint8Array([..."\x00\x11\x22\x33\x44\x55"].map(c => c.charCodeAt(0)))}],
-            ["eth.dst", {kind: opResultKind.MAC, val: new Uint8Array([..."\xAA\xBB\xCC\xDD\xEE\xFF"].map(c => c.charCodeAt(0)))}],
-            ["eth.ethertype", {kind: opResultKind.Int, val: 0x0800}],
-            ["ipv4.hlen", {kind: opResultKind.Int, val: 20}],
-            ["ipv4.proto", {kind: opResultKind.Int, val: 6}],
-            ["ipv4.len", {kind: opResultKind.Int, val: 60}],
-            ["ipv4.src", {kind: opResultKind.IPv4, val: new Address4("127.0.0.1")}],
-            ["ipv4.dst", {kind: opResultKind.IPv4, val: new Address4("127.0.0.1")}],
-            ["l4.sport", {kind: opResultKind.Int, val: 440}],
-            ["l4.dport", {kind: opResultKind.Int, val: 50000}],
-            ["l4.flags", {kind: opResultKind.Int, val: 10}],
+            ["time", { kind: opResultKind.Float, val: i }],
+            ["eth.src", {
+                kind: opResultKind.MAC,
+                val: new Uint8Array([..."\x00\x11\x22\x33\x44\x55"]
+                    .map(c => c.charCodeAt(0)))
+            }],
+            ["eth.dst", {
+                kind: opResultKind.MAC,
+                val: new Uint8Array([..."\xAA\xBB\xCC\xDD\xEE\xFF"]
+                    .map(c => c.charCodeAt(0)))
+            }],
+            ["eth.ethertype", { kind: opResultKind.Int, val: 0x0800 }],
+            ["ipv4.hlen", { kind: opResultKind.Int, val: 20 }],
+            ["ipv4.proto", { kind: opResultKind.Int, val: 6 }],
+            ["ipv4.len", { kind: opResultKind.Int, val: 60 }],
+            ["ipv4.src", { kind: opResultKind.IPv4, val: new Address4("127.0.0.1") }],
+            ["ipv4.dst", { kind: opResultKind.IPv4, val: new Address4("127.0.0.1") }],
+            ["l4.sport", { kind: opResultKind.Int, val: 440 }],
+            ["l4.dport", { kind: opResultKind.Int, val: 50000 }],
+            ["l4.flags", { kind: opResultKind.Int, val: 10 }],
         ])
     }
-    headers.forEach((header) => queries.forEach((op) => op.next(header))); 
+    headers.forEach((header) => queries.forEach((op) => op.next(header)));
 }
 
-runQueries();
+runQueries()
