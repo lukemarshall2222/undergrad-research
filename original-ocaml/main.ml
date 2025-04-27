@@ -195,25 +195,6 @@ let completed_flows (next_op: operator) : operator list =
         @=> (filter (key_geq_int "diff" threshold))
         @=> next_op
     in [syns @=> op1 ; fins @=> op2]
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 (* Sonata 8 *)
 let slowloris (next_op: operator) : operator list =
     let t1: int = 5 in
