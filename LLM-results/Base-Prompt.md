@@ -1,4 +1,4 @@
-Translate this code from Ocaml to Python:
+Translate this code from Ocaml to TypeScript:
 
 (*
  * Common utilities 
