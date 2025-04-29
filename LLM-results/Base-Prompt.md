@@ -1,4 +1,4 @@
-Translate this code from Ocaml to TypeScript:
+Translate this code from Ocaml to Rust:
 
 (*
  * Common utilities 

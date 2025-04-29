@@ -1,6 +1,9 @@
-can I reassign the method of a class in an if it originally raises a not implemented error
+Prompt: can I reassign the method of a class in an if it originally raises a not implemented error
+
 Yes, you can reassign the method of a class—even if the original method raises a NotImplementedError. In Python, methods are just attributes of a class or instance, so you can dynamically assign a new function to replace an existing one.
 Here’s a quick example to illustrate this:
+
+```python
 class MyBase:
     def do_something(self):
         raise NotImplementedError("You must implement this method")
@@ -56,14 +59,18 @@ print("Captured output")
 sys.stdout = sys.__stdout__
 
 print("Buffer contained:", buffer.getvalue())
+```
 
 
 Let me know if you're working on something specific with stdout—happy to help!
-is there a way to call a method in python right after one of a subset of methods is called?
+
+Prompt: is there a way to call a method in python right after one of a subset of methods is called?
+
 Yes, you can absolutely hook into method calls in Python and run something after one of a subset of methods is called. Here are a few ways you can do it, depending on how dynamic and clean you want your solution to be:
 
 ✅ 1. Manually wrap the target methods
 If you know the method names in advance, wrap them in decorators that call your "after" method.
+```python
 def after_hook(method):
     def wrapper(self, *args, **kwargs):
         result = method(self, *args, **kwargs)
@@ -85,10 +92,13 @@ class MyClass:
 
     def method_c(self):
         print("C doesn't trigger hook")
+```
 
 
 🌀 2. Dynamically wrap a subset of methods
 You can dynamically wrap only certain methods by name, useful if you're working with subclasses or plugins.
+
+```python
 def wrap_methods(cls, methods, hook_name):
     for name in methods:
         original = getattr(cls, name)
@@ -131,11 +141,13 @@ class MyClass:
                 return result
             return hooked
         return attr
+```
 
 This is powerful, but can be harder to debug if overused.
 
 Let me know if you’re dealing with inheritance, plugins, or decorators, and I can help make it cleaner for that context.
-what would this do: 
+
+Prompt: what would this do: 
 
 def update_operators(method): 
 def wrapper(self: Pipeline, *args, **kwargs): 
@@ -145,6 +157,7 @@ return wrapper
 
 This update_operators function is a decorator that wraps a method of a class (presumably Pipeline) to automatically call self.set_next_and_reset() after the wrapped method is executed.
 Let's break it down:
+```python
 def update_operators(method):
     def wrapper(self: Pipeline, *args, **kwargs):
         method(self, *args, **kwargs)  # call the original method
@@ -166,13 +179,14 @@ pipeline.add_stage("Transform")
 # Output:
 # Adding stage: Transform
 # Updating operators...
+```
 
 ✅ Use Case
 You'd use this if you want to ensure that whenever certain methods (like add_stage, remove_stage, etc.) are called, the pipeline updates itself afterward.
 🧠 Little extra tip:
 If you want to preserve metadata (like __name__, __doc__) from the original method, wrap it with functools.wraps:
 
-
+```python
 from functools import wraps
 
 def update_operators(method):
@@ -183,11 +197,16 @@ def update_operators(method):
         return result
     return wrapper
 
+```
+
 Let me know if you're trying to apply this to a bunch of methods automatically or conditionally—there are ways to do that cleanly too.
-so the method becomes the wrapper returned by the enclosing function?
+
+Prompt: so the method becomes the wrapper returned by the enclosing function?
+
 Exactly! 🙌
 When you use a decorator like @update_operators, Python essentially replaces the original method with the wrapper function returned by update_operators.
 Here's the core idea:
+```python
 @decorator
 def some_function(...):
     ...
@@ -208,6 +227,7 @@ def add_stage(self, stage):
     ...
 
 add_stage = update_operators(add_stage)
+```
 
 The result is that the original add_stage method is now wrapped inside the wrapper() function you defined, which:
 Calls the original add_stage.
@@ -221,12 +241,15 @@ If you're curious, you can even inspect it:
 print(pipeline.add_stage.__name__)  # probably 'wrapper' unless you used @wraps
 
 Let me know if you want to get fancier with stacking decorators or dynamically assigning them!
-how do you type returning self?
+
+Prompt: how do you type returning self?
+
 Great question! When a method returns self, and you want to type hint it properly, you generally use Self from the typing module (Python 3.11+). Here's how:
 
 ✅ Python 3.11+ (Best way)
 from typing import Self
 
+```python
 class Pipeline:
     def add_stage(self, stage: str) -> Self:
         # ... do stuff ...
@@ -242,6 +265,7 @@ T = TypeVar("T", bound="Pipeline")
 class Pipeline:
     def add_stage(self: T, stage: str) -> T:
         return self
+```
 
 This achieves the same result, but Self is cleaner and less boilerplate-y when you're able to use it.
 
@@ -259,7 +283,9 @@ pipeline.add_stage("foo").add_stage("bar")
 …won’t throw type errors, and you'll get proper autocompletion.
 
 Let me know which Python version you're using, and I can give you the most optimized snippet for it.
-are there static methods in python?
+
+Prompt: are there static methods in python?
+
 Yep! Python absolutely has static methods, and they’re declared using the @staticmethod decorator.
 🔹 What’s a static method?
 A static method:
@@ -274,6 +300,7 @@ Is like a plain function that just happens to live inside a class.
 
 
 🔧 How to define one
+```python
 class MyClass:
     @staticmethod
     def greet(name: str) -> str:
@@ -283,7 +310,7 @@ Now you can call it like this:
 MyClass.greet("Alice")  # works fine
 obj = MyClass()
 obj.greet("Bob")        # also works, but no 'self'
-
+```
 
 🧠 When to use it
 Use a @staticmethod when:
@@ -325,37 +352,47 @@ Yes! You can type hint tuple unpacking (deconstruction) in Python, though how yo
 While tuple unpacking in parameters is disallowed in function signatures in modern Python (was possible in Python 2), here's how you type the tuple and unpack manually inside:
 from typing import Tuple
 
+```python
 def process_point(point: Tuple[int, int]) -> None:
     x, y = point  # unpacking
     print(f"x: {x}, y: {y}")
+```
 
 
 ✅ 2. Using inline unpacking with type hints (Python 3.6+)
 Python doesn't support this directly:
+```python
 # ❌ Not valid syntax
 def func((x, y): Tuple[int, int]): ...
+```
 
 Instead, unpack inside and use Tuple[...] in the parameter or variable annotation:
+```python
 point: Tuple[int, int] = (5, 10)
 x, y = point  # okay; x and y will be inferred as int
+```
 
 
 ✅ 3. Using structural pattern matching (Python 3.10+)
+```python
 def handle_point(pt: Tuple[int, int]) -> None:
     match pt:
         case (x, y):
             print(f"x = {x}, y = {y}")
+```
 
 Here, x and y are inferred. You can use mypy to check types if needed.
 
 ✅ 4. Multiple return values with unpacking
 You can also use this when returning and unpacking values:
+```python
 from typing import Tuple
 
 def get_coords() -> Tuple[float, float]:
     return 1.0, 2.0
 
 x, y = get_coords()  # x and y are floats
+```
 
 
 TL;DR
