@@ -2,6 +2,7 @@ from typing import TextIO, Optional, Callable
 from utils_translated import *
 import utils_translated
 from copy import deepcopy
+import sys
 
 INIT_TABE_SIZE: int = 100
 
@@ -11,7 +12,7 @@ type grouping_func = Callable[[PacketHeaders], PacketHeaders]
 type reduction_func = Callable[[Op_result, PacketHeaders], Op_result]
 type key_extractor = Callable[[PacketHeaders], tuple[PacketHeaders, PacketHeaders]]
 
-def create_dump_operator(outc: TextIO, show_reset: bool=False) -> Operator:
+def create_dump_operator(outc: TextIO=sys.stdout, show_reset: bool=False) -> Operator:
     next: Callable[[PacketHeaders], None] = lambda packet: utils_translated.dump_packet(packet, outc)
 
     def reset(packet: PacketHeaders) -> None: 
@@ -22,13 +23,13 @@ def create_dump_operator(outc: TextIO, show_reset: bool=False) -> Operator:
     
     return Operator(next, reset)
 
-def dump_as_csv(outc: TextIO, static_field: Optional[tuple[str, str]]=None, 
+def dump_as_csv(outc: TextIO=sys.stdout, static_field: Optional[tuple[str, str]]=None, 
                 header: bool=True) -> Operator:
     first: bool = header
 
     def next(packet: PacketHeaders) -> None:
         nonlocal first # handling implicit state with closures
-        if first is None:
+        if first:
             if static_field is not None: 
                 print(static_field[0], file=outc)
 
@@ -78,10 +79,6 @@ def get_ip_or_zero(input: str) -> Op_result:
         case s:
             return Ipv4(IPv4Address(s))
 
-def read_walts_csv(filenames: list[str], ops: list[Operator], 
-                   epoc_id_key="eid") -> None:
-    pass
-
 def create_meta_meter(name: str, outc: TextIO, next_op: Operator, 
                       static_field: str | None=None) -> Operator: 
     epoch_count: int = 0
@@ -114,15 +111,19 @@ def create_epoch_operator(epoch_width: float, key_out: str,
         if epoch_boundary == 0.0:
             epoch_boundary = time + epoch_width
         while time >= epoch_boundary:
-            next_op.reset({key_out: Int(eid)})
+            new_packet: PacketHeaders = PacketHeaders()
+            new_packet.__setitem__(key_out, Int(eid))
+            next_op.reset(new_packet)
             epoch_boundary = epoch_boundary + epoch_width
             eid += 1
-        next_op.next(packet.__setitem__
-                     (key_out, Int(eid)))
+        packet.__setitem__(key_out, Int(eid))
+        next_op.next(packet)
         
     def reset(_ : PacketHeaders) -> None:
         nonlocal epoch_boundary, eid
-        next_op.reset({key_out: Int(eid)})
+        new_packet: PacketHeaders = PacketHeaders()
+        new_packet.__setitem__(key_out, Int(eid))
+        next_op.reset(new_packet)
         epoch_boundary = 0.0
         eid = 0
 
@@ -166,6 +167,7 @@ def create_groupby_operator(group_packet: grouping_func, reduce: reduction_func,
         reset_counter += 1
         for packt, op_res in h_tbl.items():
             # keeps the original val for a given key if in both Packets:
+            assert(isinstance(packet, PacketHeaders))
             unioned_packet = packt | packet
             next_op.next(unioned_packet.__setitem__(out_key, op_res))
         next_op.reset(packet)

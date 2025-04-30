@@ -10,10 +10,10 @@ type op_result_type = Union[float, int, IPv4Address, bytearray, None]
 
 @dataclass
 class Op_result(ABC):
-    val: op_result_type = None
+    val: op_result_type
 
     def __hash__(self): 
-        return hash((self.kind, self.val))
+        return hash(self.val)
 
 @dataclass
 class Float(Op_result):
@@ -23,13 +23,22 @@ class Float(Op_result):
 class Int(Op_result):
     val: int
 
+    def __hash__(self): 
+        return hash(self.val)
+
 @dataclass
 class Ipv4(Op_result):
     val: IPv4Address
 
+    def __hash__(self):
+        return hash(self.val.exploded)
+
 @dataclass
 class MAC(Op_result):
     val: bytearray
+
+    def __hash__(self):
+        return hash(bytes(self.val))
 
 @dataclass
 class Empty(Op_result):
@@ -106,7 +115,7 @@ class Op_to_op:
 
 class Op_to_op_tup(Op_to_op):
     def __init__(self, func: Callable[[any], Operator], *args):
-        super().__init__(func, args)
+        self.func = partial(func, *args)
     def __rshift__(self, op: Operator) -> tuple[Operator, Operator]:
         if not isinstance(op, Operator):
             raise TypeError(f"Can only apply an operator \
@@ -128,27 +137,25 @@ def tcp_flags_to_strings(flags: int) -> str:
     return "|".join(flag for flag, val in tcp_flags_map() 
                     if (flags & val) == val)
 
-def int_of_op_result(input: Op_result) -> int:
-    match input.kind:
-        case Op_result.INT: return input.val
+def int_of_op_result(input: Int) -> int:
+    match input:
+        case Int(val=val): return val
         case _:
             raise TypeError("Trying to extract int from non-int result")
 
-def float_of_op_result(input: Op_result) -> float:
-    match input.kind:
-        case Op_result.FLOAT: return input.val
+def float_of_op_result(input: Float) -> float:
+    match input:
+        case Float(val=val): return val
         case _:
             raise TypeError("Trying to extract float from non-float result")
         
 def string_of_op_result(input: Op_result) -> str:
-    match input.kind:
-        case Op_result.FLOAT | Op_result.INT:
-            return f"{input.val}"
-        case Op_result.IPV4:
-            return str(IPv4Address(input.val))
-        case Op_result.MAC:
-            return string_of_mac(input.val)
-        case Op_result.Empty:
+    match input:
+        case Float(val=val) | Int(val=val) | Ipv4(val=val):
+            return f"{val}"
+        case MAC(val=val):
+            return string_of_mac(val)
+        case Empty():
             "Empty"
         case _:
             raise RuntimeError("Reached unreachable code")

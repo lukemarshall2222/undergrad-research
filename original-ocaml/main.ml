@@ -120,27 +120,6 @@ let syn_flood_sonata (next_op: operator) : operator list =
         @=> (groupby (filter_groups ["ipv4.dst"]) 
                                         counter "acks")
         @=> next_op
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     in let (join_op1: operator), (join_op2: operator) =
         (join
             (fun (tup: tuple)-> ((filter_groups ["host"] tup), 
@@ -163,6 +142,7 @@ let syn_flood_sonata (next_op: operator) : operator list =
                     (get_mapped_int "synacks" tup))) tup))
         @=> join_op1
     in [syns @=> join_op3 ; synacks @=> join_op4 ; acks @=> join_op2]
+    
 (* Sonata 7 *)
 let completed_flows (next_op: operator) : operator list =
     let threshold: int = 1 in
@@ -195,6 +175,7 @@ let completed_flows (next_op: operator) : operator list =
         @=> (filter (key_geq_int "diff" threshold))
         @=> next_op
     in [syns @=> op1 ; fins @=> op2]
+
 (* Sonata 8 *)
 let slowloris (next_op: operator) : operator list =
     let t1: int = 5 in
@@ -255,21 +236,23 @@ let join_test (next_op: operator) : operator list =
                         (filter_groups ["time"] tup))))
         @==> next_op
     in [syns @=> op1 ; synacks @=> op2]
+
 let q3 (next_op: operator) : operator =
     (epoch 100.0 "eid")
     @=> distinct (filter_groups ["ipv4.src" ; "ipv4.dst"])
     @=> next_op
+
 let q4 (next_op: operator) : operator =
     (epoch 10000.0 "eid")
     @=> groupby (filter_groups ["ipv4.dst"]) counter "pkts"
     @=> next_op
 
-let queries: operator list = [ident @=> dump_tuple stdout]
+let queries: operator list = [q4 @=> dump_as_csv stdout]
 
 let run_queries () = 
     List.map (fun (tup: tuple) -> 
         List.iter (fun (query: operator) -> query.next tup) queries)
-        (List.init 20 (fun (i: int) ->
+        (List.init 4 (fun (i: int) ->
             Tuple.empty
             |> Tuple.add "time" (Float (0.000000 +. (float)i))
 
@@ -279,11 +262,11 @@ let run_queries () =
                                                     "\xAA\xBB\xCC\xDD\xEE\xFF"))
             |> Tuple.add "eth.ethertype" (Int 0x0800)
 
-            |> Tuple.add "ipv4.hlen" (Int 20)
+            |> Tuple.add "ipv4.hlen" (Int (20+i))
             |> Tuple.add "ipv4.proto" (Int 6)
             |> Tuple.add "ipv4.len" (Int 60)
             |> Tuple.add "ipv4.src" (IPv4 (Ipaddr.V4.of_string_exn "127.0.0.1"))
-            |> Tuple.add "ipv4.dst" (IPv4 (Ipaddr.V4.of_string_exn "127.0.0.1"))
+            |> Tuple.add "ipv4.dst" (IPv4 (Ipaddr.V4.of_string_exn "192.6.8.1"))
 
             |> Tuple.add "l4.sport" (Int 440)
             |> Tuple.add "l4.dport" (Int 50000)
