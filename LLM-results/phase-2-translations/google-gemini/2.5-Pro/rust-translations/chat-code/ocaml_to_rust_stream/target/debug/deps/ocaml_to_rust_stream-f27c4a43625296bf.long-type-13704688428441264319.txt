@@ -1,0 +1,3 @@
+dyn FnOnce(utils::Operator) -> Result<utils::Operator, utils::Error>: Clone
+Box<dyn FnOnce(utils::Operator) -> Result<utils::Operator, utils::Error>>: Clone
+Box<dyn FnOnce(utils::Operator) -> Result<utils::Operator, utils::Error>>
