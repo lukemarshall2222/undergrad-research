@@ -1,8 +1,7 @@
-from typing import TextIO, Optional, Callable, Self
+from typing import TextIO, Optional, Callable, Self, Annotated
 from utils_translated import *
 from copy import deepcopy
 from collections import namedtuple
-from inspect import signature
 from functools import partial
 
 type GroupingFunc = Callable[[PacketHeaders], PacketHeaders]
@@ -15,113 +14,52 @@ type IncompleteQueryMethod = Callable[[
     IncompleteQueryMethod | FullQueryMethod, PacketHeaders], None]
 type FullQueryMethod = Callable[[PacketHeaders], None]
 type QueryMethodType = IncompleteQueryMethod | FullQueryMethod
-QueryMethods = namedtuple('QueryMethods', ['next', 'reset'])
 BranchedQuery = namedtuple("BranchedQuery", ['right', 'left'])
-
-
-class NextToNext():
-    NEXT = 0
-    RESET = 1
-
-    def __init__(self):
-        self.__kind: int | None = NextToNext.NEXT
-        self.__method: tuple[NextToNext,
-                             NextToNext] | IncompleteQueryMethod | FullQueryMethod | None = None
-
-    def __call__(self, *args) -> None:
-        match self.__method:
-            case IncompleteQueryMethod():
-                if len(args) == 2:
-                    self.__method(*args)
-                else:
-                    raise TypeError("Inclomplete Query Method expects either an incomplete query"
-                                    "method or a query method, and Packet Headers. The Query must "
-                                    "end with a dumping ")
-            case FullQueryMethod():
-                if len(args) == 1:
-                    self.__method(*args)
-                else:
-                    raise TypeError(
-                        "this query is full and expects Packet Headers as its only argument."
-                        "The query will then execute the prescribed operations")
-            case None:
-                raise NotImplementedError("Cannot call an empty query method")
-
-    def add_op(self, query: "Query" | IncompleteQueryMethod | FullQueryMethod) -> Self:
-        match self.__method:
-            case None:
-                self.__method = partial(query)
-
-            case func if callable(func) and self.__is_incomplete(func):
-                unwrapped_func, args = unwrap_function(func)
-                self.__method = partial(unwrapped_func, *args, query)
-
-            case BranchedQuery(left, right):
-                assert (isinstance(left, Query))
-                assert (isinstance(right, Query))
-                if isinstance(query, Query):
-                    left.add_query(query)
-                    right.add_query(query)
-                else:
-                    left.__next.add_op(query) \
-                        if self.__kind == NextToNext.NEXT \
-                        else right.__reset.add_op(query)
-                    right.__next.add_op(query) \
-                        if self.__kind == NextToNext.NEXT \
-                        else right.__reset.add_op(query)
-
-            case func if callable(func) and self.__is_full(func):
-                raise TypeError("cannot add an operation to a Query that has been "
-                                "capped with a dumping operator")
-
-        return self
-
-    def __is_incomplete(self, func) -> bool:
-        f, _ = unwrap_function(func)
-        return len(signature(f).parameters) == 2
-
-    def __is_full(self, func) -> bool:
-        f, _ = unwrap_function(func)
-        return len(signature(f).parameters) == 1
-
-    def is_empty(self):
-        return self.__method == None
-
-    def get_method(self) -> QueryMethodType | tuple["NextToNext", "NextToNext"] | None:
-        return self.__method
-
-
-class NextToReset(NextToNext):
-    def __init__(self):
-        super().__init__()
-        self.__kind = NextToReset.RESET
+type OpCreator = Callable[[Query.Operator], Query.Operator]
 
 
 class Query():
-    def __init__(self, starting_ops: QueryMethods | None) -> Self:
-        self.__next = NextToNext()
-        self.__next.__kind = NextToNext.NEXT
-        self.__next.add_op(starting_ops.next)
 
-        self.__reset = NextToReset()
-        self.__reset.__kind = NextToReset.RESET
-        self.__reset.add_op(starting_ops.reset)
+    class Operator():
+        def __init__(self, next: Callable[[PacketHeaders], None], 
+                    reset: Callable[[PacketHeaders], None]):
+            self.next = next
+            self.reset = reset
+        def next(packet: PacketHeaders) -> None:
+            raise NotImplementedError("next method has not been assigned for this operator.")
+        def reset(packet: PacketHeaders) -> None:
+            raise NotImplementedError("reset method has not been assigned for this operator.")
+
+    def __init__(self) -> Self:
+        self.__ops = []
+        self.__query: Query.Operator | None = None
+        return self
 
     def next(self, headers: PacketHeaders) -> None:
-        if self.__next.is_empty():
-            raise NotImplementedError("next method has not been assigned")
-        if
-        return self.__next(headers)
+        if self.is_empty():
+            raise NotImplementedError("Query must be built using combinators before next" \
+                                        "method can be called")
+        self.collect()
+        return self.__query.next(headers)
 
     def reset(self, headers: PacketHeaders) -> None:
-        if self.__reset.is_empty():
-            raise NotImplementedError("reset method has not been assigned")
-        return self.__reset(headers)
+        if self.is_empty():
+            raise NotImplementedError("Query must be built using combinators before next" \
+                                        "method can be called")
+        self.collect()
+        return self.__query.next(headers)
 
-    def collect(self) -> QueryMethods | BranchedQuery:
-        return BranchedQuery(self.__next, self.__reset) \
-            if isinstance(self.__next, Query) \
-            else QueryMethods(self.__next.get_method(), self.__reset.get_method())
+    def collect(self) -> Operator | BranchedQuery:
+        if self.is_empty():
+            raise NotImplementedError("A query must be built from combinators in order to" \
+                                        "collect the query")
+        def compose(f: OpCreator, g: OpCreator):
+            return lambda next_op: f(g(next_op))
+        
+        
+            
+            
+        return query
 
     def add_query(self, other: "Query") -> Self:
         self.__next.add_op(deepcopy(other.__next.__method))
@@ -388,6 +326,9 @@ class Query():
         self.__next.add_op(next)
         self.__reset.add_op(reset)
         return self
+    
+    def is_empty(self) -> bool:
+        return len(self.__ops) == 0
 
 
 def rename_filtered_keys(renaming_pairs: list[tuple[str, str]],
