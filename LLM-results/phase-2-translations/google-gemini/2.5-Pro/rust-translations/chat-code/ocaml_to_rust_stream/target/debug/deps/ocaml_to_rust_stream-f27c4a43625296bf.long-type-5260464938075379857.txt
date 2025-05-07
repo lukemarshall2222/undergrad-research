@@ -1,1 +1,0 @@
-Box<dyn FnMut(HashMap<String, utils::OpResult>) -> Result<(), utils::Error>>

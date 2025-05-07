@@ -1,6 +1,0 @@
-[package]
-name = "ocaml_to_rust_stream"
-version = "0.1.0"
-edition = "2024"
-
-[dependencies]
