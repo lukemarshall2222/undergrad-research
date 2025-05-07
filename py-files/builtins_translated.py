@@ -1,8 +1,9 @@
-from typing import TextIO, Optional, Callable, Self, Annotated
+from typing import TextIO, Optional, Callable, Self
+from types import Optional
 from utils_translated import *
 from copy import deepcopy
 from collections import namedtuple
-from functools import partial
+from functools import reduce
 
 type GroupingFunc = Callable[[PacketHeaders], PacketHeaders]
 type ReductionFunc = Callable[[Op_result, PacketHeaders], Op_result]
@@ -21,61 +22,97 @@ type OpCreator = Callable[[Query.Operator], Query.Operator]
 class Query():
 
     class Operator():
-        def __init__(self, next: Callable[[PacketHeaders], None], 
-                    reset: Callable[[PacketHeaders], None]):
+        def __init__(self, next: Callable[[PacketHeaders], None],
+                     reset: Callable[[PacketHeaders], None]):
             self.next = next
             self.reset = reset
-        def next(packet: PacketHeaders) -> None:
-            raise NotImplementedError("next method has not been assigned for this operator.")
-        def reset(packet: PacketHeaders) -> None:
-            raise NotImplementedError("reset method has not been assigned for this operator.")
 
-    def __init__(self) -> Self:
-        self.__ops = []
-        self.__query: Query.Operator | None = None
+        def next(packet: PacketHeaders) -> None:
+            raise NotImplementedError(
+                "next method has not been assigned for this operator.")
+
+        def reset(packet: PacketHeaders) -> None:
+            raise NotImplementedError(
+                "reset method has not been assigned for this operator.")
+
+    def __init__(self, middle_op: Optional[OpCreator] = None,
+                 end_op: Optional[Operator] = None,
+                 additional_query: Optional["Query"] = None) -> Self:
+        self.__ops: list[OpCreator] = []
+        self.__end_op: Query.Operator | None = None
+        self.__query: OpCreator | Query.Operator | None = None
+
+        match middle_op:
+            case Callable():
+                self.__ops.append(middle_op)
+            case None:
+                pass
+
+        match end_op:
+            case Query.Operator():
+                self.__end_op = end_op
+            case None:
+                pass
+
+        match additional_query:
+            case Query():
+                self.__end_op = additional_query.__end_op
+                self.__ops.append(additional_query.__ops)
+
         return self
 
     def next(self, headers: PacketHeaders) -> None:
         if self.is_empty():
-            raise NotImplementedError("Query must be built using combinators before next" \
-                                        "method can be called")
+            raise NotImplementedError("Query must be built using combinators before next"
+                                      "method can be called")
         self.collect()
         return self.__query.next(headers)
 
     def reset(self, headers: PacketHeaders) -> None:
         if self.is_empty():
-            raise NotImplementedError("Query must be built using combinators before next" \
-                                        "method can be called")
+            raise NotImplementedError("Query must be built using combinators before next"
+                                      "method can be called")
         self.collect()
         return self.__query.next(headers)
 
-    def collect(self) -> Operator | BranchedQuery:
+    def collect(self) -> Operator | BranchedQuery | OpCreator:
         if self.is_empty():
-            raise NotImplementedError("A query must be built from combinators in order to" \
-                                        "collect the query")
-        def compose(f: OpCreator, g: OpCreator):
+            raise NotImplementedError("A query must be built from combinators in order to"
+                                      "collect the query")
+        i: int = 0
+        curr_op: OpCreator | Query.Operator
+        while not isinstance(curr_op, Query.Operator):
+            curr_op = self.__ops[i]
+            if not isinstance(curr_op, Callable) or curr_op.__code__.co_argcount != 1:
+                raise TypeError(f"{curr_op.__code__.co_name} is not an OpCreator function."
+                                "Cannot use as part of a query")
+
+        def compose(f: OpCreator, g: OpCreator) -> OpCreator:
             return lambda next_op: f(g(next_op))
-        
-        
-            
-            
-        return query
+
+        return reduce(compose, self.__ops)(self.__end_op) \
+            if self.__end_op is None \
+            else reduce(compose, self.__ops)
 
     def add_query(self, other: "Query") -> Self:
-        self.__next.add_op(deepcopy(other.__next.__method))
-        self.__reset.add_op(other.__reset.__method)
+        self.__ops.append(other.__ops)
+        self.__end_op = other.__end_op
 
     def dump(self, outc: TextIO, show_reset: bool = False) -> Self:
-        next: FullQueryMethod = lambda headers: headers.dump_packet(outc)
+        def create_op(next_op: Query.Operator):
+            def next(headers: PacketHeaders): headers.dump_packet(outc),
 
-        def reset(headers: PacketHeaders) -> None:
-            if show_reset is not None:
-                headers.dump_packet(outc)
+            def reset(headers: PacketHeaders): 
+                if show_reset is not None:
+                    headers.dump_packet(outc)
                 print("[reset]\n", file=outc)
-            return None
+                return None
+        
+        self.__end_op = Query.Operator(
+            
+            
+        )
 
-        self.__next.add_op(next)
-        self.__reset.add_op(reset)
         return self
 
     def dump_as_csv(self, outc: TextIO, static_field: Optional[tuple[str, str]] = None,
@@ -326,7 +363,7 @@ class Query():
         self.__next.add_op(next)
         self.__reset.add_op(reset)
         return self
-    
+
     def is_empty(self) -> bool:
         return len(self.__ops) == 0
 

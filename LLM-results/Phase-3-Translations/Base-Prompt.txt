@@ -1,4 +1,4 @@
-Translate this code from Ocaml to TypeScript. Only use coding paradigms and idioms which are natural to the language and emphasized by the corresponding language community.
+Translate this code from Ocaml to <Target Language>>. Only use coding paradigms and idioms which are natural to the language and emphasized by the corresponding language community.
 
 (*
  * Common utilities 
