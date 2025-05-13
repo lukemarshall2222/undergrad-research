@@ -2,12 +2,10 @@
 //!
 //! Includes minimal parsing of header fields into a map from strings to values
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap};
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, Write};
 use std::net::Ipv4Addr;
-use std::fmt;
-use std::time::Duration;
 
 /// Operators act on named "tuples" which are maps from strings to op_result types
 #[derive(Debug, Clone)]
@@ -23,6 +21,7 @@ pub enum OpResult {
 pub type Tuple = HashMap<String, OpResult>;
 
 // Defines a data processing unit in a stream processing pipeline
+#[derive(Clone)]
 pub struct Operator {
     pub next: Box<dyn Fn(&Tuple) -> ()>,
     pub reset: Box<dyn Fn(&Tuple) -> ()>,
@@ -667,7 +666,7 @@ pub fn pkts_per_src_dst(next_op: Operator) -> Operator {
     
     Operator {
         next: Box::new(move |tup| {
-            let mut intermediate_tup = tup.clone();
+            let intermediate_tup = tup.clone();
             (epoch_op.next)(&intermediate_tup);
             (groupby_op.next)(&intermediate_tup);
         }),
@@ -695,7 +694,7 @@ pub fn distinct_srcs(next_op: Operator) -> Operator {
     
     Operator {
         next: Box::new(move |tup| {
-            let mut intermediate_tup = tup.clone();
+            let intermediate_tup = tup.clone();
             (epoch_op.next)(&intermediate_tup);
             (distinct_op.next)(&intermediate_tup);
             (groupby_op.next)(&intermediate_tup);
@@ -736,7 +735,7 @@ pub fn tcp_new_cons(next_op: Operator) -> Operator {
     
     Operator {
         next: Box::new(move |tup| {
-            let mut intermediate_tup = tup.clone();
+            let intermediate_tup = tup.clone();
             (epoch_op.next)(&intermediate_tup);
             (filter_op.next)(&intermediate_tup);
             (groupby_op.next)(&intermediate_tup);
@@ -784,7 +783,7 @@ pub fn ssh_brute_force(next_op: Operator) -> Operator {
     
     Operator {
         next: Box::new(move |tup| {
-            let mut intermediate_tup = tup.clone();
+            let intermediate_tup = tup.clone();
             (epoch_op.next)(&intermediate_tup);
             (filter_op.next)(&intermediate_tup);
             (distinct_op.next)(&intermediate_tup);
@@ -826,7 +825,7 @@ pub fn super_spreader(next_op: Operator) -> Operator {
     
     Operator {
         next: Box::new(move |tup| {
-            let mut intermediate_tup = tup.clone();
+            let intermediate_tup = tup.clone();
             (epoch_op.next)(&intermediate_tup);
             (distinct_op.next)(&intermediate_tup);
             (groupby_op.next)(&intermediate_tup);
@@ -866,7 +865,7 @@ pub fn port_scan(next_op: Operator) -> Operator {
     
     Operator {
         next: Box::new(move |tup| {
-            let mut intermediate_tup = tup.clone();
+            let intermediate_tup = tup.clone();
             (epoch_op.next)(&intermediate_tup);
             (distinct_op.next)(&intermediate_tup);
             (groupby_op.next)(&intermediate_tup);
@@ -906,7 +905,7 @@ pub fn ddos(next_op: Operator) -> Operator {
     
     Operator {
         next: Box::new(move |tup| {
-            let mut intermediate_tup = tup.clone();
+            let intermediate_tup = tup.clone();
             (epoch_op.next)(&intermediate_tup);
             (distinct_op.next)(&intermediate_tup);
             (groupby_op.next)(&intermediate_tup);
@@ -947,7 +946,7 @@ pub fn syn_flood_sonata(next_op: Operator) -> Vec<Operator> {
         
         Operator {
             next: Box::new(move |tup| {
-                let mut intermediate_tup = tup.clone();
+                let intermediate_tup = tup.clone();
                 (epoch_op.next)(&intermediate_tup);
                 (filter_op.next)(&intermediate_tup);
                 (groupby_op.next)(&intermediate_tup);
@@ -981,7 +980,7 @@ pub fn syn_flood_sonata(next_op: Operator) -> Vec<Operator> {
         
         Operator {
             next: Box::new(move |tup| {
-                let mut intermediate_tup = tup.clone();
+                let intermediate_tup = tup.clone();
                 (epoch_op.next)(&intermediate_tup);
                 (filter_op.next)(&intermediate_tup);
                 (groupby_op.next)(&intermediate_tup);
@@ -1015,7 +1014,7 @@ pub fn syn_flood_sonata(next_op: Operator) -> Vec<Operator> {
         
         Operator {
             next: Box::new(move |tup| {
-                let mut intermediate_tup = tup.clone();
+                let intermediate_tup = tup.clone();
                 (epoch_op.next)(&intermediate_tup);
                 (filter_op.next)(&intermediate_tup);
                 (groupby_op.next)(&intermediate_tup);
@@ -1071,8 +1070,8 @@ pub fn syn_flood_sonata(next_op: Operator) -> Vec<Operator> {
         (join_op1, join_op2)
     };
     
+    let (join_op1, join_op2) = join_op_builder(next_op.clone());
     let (join_op3, join_op4) = {
-        let (join_op1, join_op2) = join_op_builder(next_op.clone());
         
         join(
             "eid",
@@ -1149,7 +1148,7 @@ pub fn completed_flows(next_op: Operator) -> Vec<Operator> {
         
         Operator {
             next: Box::new(move |tup| {
-                let mut intermediate_tup = tup.clone();
+                let intermediate_tup = tup.clone();
                 (epoch_op.next)(&intermediate_tup);
                 (filter_op.next)(&intermediate_tup);
                 (groupby_op.next)(&intermediate_tup);
@@ -1183,7 +1182,7 @@ pub fn completed_flows(next_op: Operator) -> Vec<Operator> {
         
         Operator {
             next: Box::new(move |tup| {
-                let mut intermediate_tup = tup.clone();
+                let intermediate_tup = tup.clone();
                 (epoch_op.next)(&intermediate_tup);
                 (filter_op.next)(&intermediate_tup);
                 (groupby_op.next)(&intermediate_tup);
@@ -1277,8 +1276,9 @@ pub fn slowloris(next_op: Operator) -> Vec<Operator> {
             next_op.clone()
         );
         
+        let t1 = t1.clone();
         let threshold_filter_op = filter(
-            |tup| {
+            move |tup| {
                 get_mapped_int("n_conns", tup) >= t1
             },
             next_op
@@ -1286,7 +1286,7 @@ pub fn slowloris(next_op: Operator) -> Vec<Operator> {
         
         Operator {
             next: Box::new(move |tup| {
-                let mut intermediate_tup = tup.clone();
+                let intermediate_tup = tup.clone();
                 (epoch_op.next)(&intermediate_tup);
                 (filter_op.next)(&intermediate_tup);
                 (distinct_op.next)(&intermediate_tup);
@@ -1332,8 +1332,9 @@ pub fn slowloris(next_op: Operator) -> Vec<Operator> {
             next_op.clone()
         );
         
+        let t2 = t2.clone();
         let threshold_filter_op = filter(
-            |tup| {
+            move |tup| {
                 get_mapped_int("n_bytes", tup) >= t2
             },
             next_op
@@ -1341,7 +1342,7 @@ pub fn slowloris(next_op: Operator) -> Vec<Operator> {
         
         Operator {
             next: Box::new(move |tup| {
-                let mut intermediate_tup = tup.clone();
+                let intermediate_tup = tup.clone();
                 (epoch_op.next)(&intermediate_tup);
                 (filter_op.next)(&intermediate_tup);
                 (groupby_op.next)(&intermediate_tup);
@@ -1383,7 +1384,7 @@ pub fn slowloris(next_op: Operator) -> Vec<Operator> {
                 new_tup
             },
             filter(
-                |tup| {
+                move |tup| {
                     get_mapped_int("bytes_per_conn", tup) <= t3
                 },
                 next_op
@@ -1415,7 +1416,7 @@ pub fn join_test(next_op: Operator) -> Vec<Operator> {
         
         Operator {
             next: Box::new(move |tup| {
-                let mut intermediate_tup = tup.clone();
+                let intermediate_tup = tup.clone();
                 (epoch_op.next)(&intermediate_tup);
                 (filter_op.next)(&intermediate_tup);
             }),
@@ -1440,7 +1441,7 @@ pub fn join_test(next_op: Operator) -> Vec<Operator> {
         
         Operator {
             next: Box::new(move |tup| {
-                let mut intermediate_tup = tup.clone();
+                let intermediate_tup = tup.clone();
                 (epoch_op.next)(&intermediate_tup);
                 (filter_op.next)(&intermediate_tup);
             }),
@@ -1501,7 +1502,7 @@ pub fn q3(next_op: Operator) -> Operator {
     
     Operator {
         next: Box::new(move |tup| {
-            let mut intermediate_tup = tup.clone();
+            let intermediate_tup = tup.clone();
             (epoch_op.next)(&intermediate_tup);
             (distinct_op.next)(&intermediate_tup);
         }),
@@ -1524,7 +1525,7 @@ pub fn q4(next_op: Operator) -> Operator {
     
     Operator {
         next: Box::new(move |tup| {
-            let mut intermediate_tup = tup.clone();
+            let intermediate_tup = tup.clone();
             (epoch_op.next)(&intermediate_tup);
             (groupby_op.next)(&intermediate_tup);
         }),
@@ -1670,57 +1671,3 @@ fn main() {
     run_queries();
     println!("Done");
 }
-
-// Main entry point
-pub fn run_queries() {
-    let stdout = Box::new(io::stdout());
-    let dump_op = dump_tuple_op(stdout, false);
-    
-    let ident_op = ident(dump_op);
-    let queries = vec![ident_op];
-    
-    for i in 0..20 {
-        let time = OpResult::Float(0.0 + i as f64);
-        
-        let eth_src = OpResult::MAC([0x00, 0x11, 0x22, 0x33, 0x44, 0x55]);
-        let eth_dst = OpResult::MAC([0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF]);
-        let eth_ethertype = OpResult::Int(0x0800);
-        
-        let ipv4_hlen = OpResult::Int(20);
-        let ipv4_proto = OpResult::Int(6);
-        let ipv4_len = OpResult::Int(60);
-        let ipv4_src = OpResult::IPv4("127.0.0.1".parse().unwrap());
-        let ipv4_dst = OpResult::IPv4("127.0.0.1".parse().unwrap());
-        
-        let l4_sport = OpResult::Int(440);
-        let l4_dport = OpResult::Int(50000);
-        let l4_flags = OpResult::Int(10);
-        
-        let mut tup = HashMap::new();
-        tup.insert("time".to_string(), time);
-        
-        tup.insert("eth.src".to_string(), eth_src);
-        tup.insert("eth.dst".to_string(), eth_dst);
-        tup.insert("eth.ethertype".to_string(), eth_ethertype);
-        
-        tup.insert("ipv4.hlen".to_string(), ipv4_hlen);
-        tup.insert("ipv4.proto".to_string(), ipv4_proto);
-        tup.insert("ipv4.len".to_string(), ipv4_len);
-        tup.insert("ipv4.src".to_string(), ipv4_src);
-        tup.insert("ipv4.dst".to_string(), ipv4_dst);
-        
-        tup.insert("l4.sport".to_string(), l4_sport);
-        tup.insert("l4.dport".to_string(), l4_dport);
-        tup.insert("l4.flags".to_string(), l4_flags);
-        
-        for query in &queries {
-            (query.next)(&tup);
-        }
-    }
-}
-
-fn main() {
-    run_queries();
-    println!("Done");
-}
-

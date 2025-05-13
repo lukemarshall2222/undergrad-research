@@ -1,12 +1,10 @@
 use std::collections::HashMap;
 use std::fmt;
-use std::net::{IpAddr, Ipv4Addr};
 use std::rc::Rc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 // Re-exporting for convenience, assuming these are defined elsewhere in the Rust project
 // If these are external crates, ensure they are added to your Cargo.toml
-pub mod Bytes {
+pub mod bytes {
     #[derive(Clone, Debug, PartialEq, Eq, Hash)]
     pub struct Bytes(pub Vec<u8>);
 
@@ -21,8 +19,8 @@ pub mod Bytes {
     }
 }
 
-pub mod Ipaddr {
-    pub mod V4 {
+pub mod ipaddr {
+    pub mod v4 {
         use std::net::Ipv4Addr;
 
         #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -44,8 +42,8 @@ pub mod Ipaddr {
 pub enum OpResult {
     Float(f64),
     Int(i64),
-    IPv4(Ipaddr::V4::V4),
-    MAC(Bytes::Bytes),
+    IPv4(ipaddr::v4::V4),
+    MAC(bytes::Bytes),
     Empty,
 }
 
@@ -99,7 +97,7 @@ pub fn dbl_op_chain(op_creator_func: DblOpCreator, op: Rc<Operator>) -> (Rc<Oper
 
 // Conversion utilities
 
-pub fn string_of_mac(buf: &Bytes::Bytes) -> String {
+pub fn string_of_mac(buf: &bytes::Bytes) -> String {
     let bytes = &buf.0;
     format!(
         "{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
@@ -276,7 +274,7 @@ pub fn dump_walts_csv(filename: &str) -> Rc<Operator> {
 pub fn get_ip_or_zero(input: &str) -> OpResult {
     match input {
         "0" => OpResult::Int(0),
-        catchall => OpResult::IPv4(Ipaddr::V4::V4::of_string_exn(catchall)),
+        catchall => OpResult::IPv4(ipaddr::v4::V4::of_string_exn(catchall)),
     }
 }
 
@@ -738,8 +736,7 @@ pub fn syn_flood_sonata(next_op: Rc<Operator>) -> Vec<Rc<Operator>> {
                 }),
                 groupby(
                     Rc::new(|tup| filter_groups(&["ipv4.dst"], tup)),
-                    Rc::new 
-                    counter),
+                    Rc::new(counter),
                     "syns",
                     next_op_cloned,
                 ),
@@ -785,7 +782,7 @@ pub fn syn_flood_sonata(next_op: Rc<Operator>) -> Vec<Rc<Operator>> {
         )
     };
 
-    let (join_op1, join_op2) = {
+    let (join_op1, _join_op2) = {
         let next_op_cloned = next_op.clone();
         let map_op_inner = map_op(
             Rc::new(|tup| {
@@ -805,7 +802,7 @@ pub fn syn_flood_sonata(next_op: Rc<Operator>) -> Vec<Rc<Operator>> {
         )
     };
 
-    let (join_op3, join_op4) = {
+    let (_join_op3, _join_op4) = {
         let join_op1_cloned = join_op1.clone();
         let map_op_inner = map_op(
             Rc::new(|tup| {
@@ -870,7 +867,7 @@ pub fn completed_flows(next_op: Rc<Operator>) -> Vec<Rc<Operator>> {
         )
     };
 
-    let (op1, op2) = {
+    let (_op1, _op2) = {
         let next_op_cloned = next_op.clone();
         let map_op_inner = map_op(
             Rc::new(|tup| {
@@ -936,7 +933,7 @@ pub fn slowloris(next_op: Rc<Operator>) -> Vec<Rc<Operator>> {
         )
     };
 
-    let (op1, op2) = {
+    let (_op1, _op2) = {
         let next_op_cloned = next_op.clone();
         let map_op_inner = map_op(
             Rc::new(|tup| {
@@ -990,7 +987,7 @@ pub fn join_test(next_op: Rc<Operator>) -> Vec<Rc<Operator>> {
         )
     };
 
-    let (op1, op2) = join(
+    let (_op1, _op2) = join(
         Some("host"),
         Rc::new(|tup| (rename_filtered_keys(&[("ipv4.src".to_string(), "host".to_string())], tup), rename_filtered_keys(&[("ipv4.dst".to_string(), "remote".to_string())], tup))),
         Rc::new(|tup| (rename_filtered_keys(&[("ipv4.dst".to_string(), "host".to_string())], tup), filter_groups(&["time"], tup))),
@@ -1029,14 +1026,14 @@ pub fn run_queries(queries: &[Rc<Operator>]) {
     for i in 0..20 {
         let mut tup: Tuple = HashMap::new();
         tup.insert("time".to_string(), OpResult::Float(0.000000 + i as f64));
-        tup.insert("eth.src".to_string(), OpResult::MAC(Bytes::Bytes(vec![0x00, 0x11, 0x22, 0x33, 0x44, 0x55])));
-        tup.insert("eth.dst".to_string(), OpResult::MAC(Bytes::Bytes(vec![0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF])));
+        tup.insert("eth.src".to_string(), OpResult::MAC(bytes::Bytes(vec![0x00, 0x11, 0x22, 0x33, 0x44, 0x55])));
+        tup.insert("eth.dst".to_string(), OpResult::MAC(bytes::Bytes(vec![0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF])));
         tup.insert("eth.ethertype".to_string(), OpResult::Int(0x0800));
         tup.insert("ipv4.hlen".to_string(), OpResult::Int(20));
         tup.insert("ipv4.proto".to_string(), OpResult::Int(6));
         tup.insert("ipv4.len".to_string(), OpResult::Int(60));
-        tup.insert("ipv4.src".to_string(), OpResult::IPv4(Ipaddr::V4::V4::of_string_exn("127.0.0.1")));
-        tup.insert("ipv4.dst".to_string(), OpResult::IPv4(Ipaddr::V4::V4::of_string_exn("127.0.0.1")));
+        tup.insert("ipv4.src".to_string(), OpResult::IPv4(ipaddr::v4::V4::of_string_exn("127.0.0.1")));
+        tup.insert("ipv4.dst".to_string(), OpResult::IPv4(ipaddr::v4::V4::of_string_exn("127.0.0.1")));
         tup.insert("l4.sport".to_string(), OpResult::Int(440));
         tup.insert("l4.dport".to_string(), OpResult::Int(50000));
         tup.insert("l4.flags".to_string(), OpResult::Int(10));

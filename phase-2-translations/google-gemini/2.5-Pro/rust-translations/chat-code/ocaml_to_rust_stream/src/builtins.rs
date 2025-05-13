@@ -454,7 +454,7 @@ pub fn groupby(
         }),
         reset: Box::new(move |reset_tup: Tuple| -> Result<(), Error> {
             let table = h_tbl.borrow(); // Read-only borrow for iteration
-            for (grouping_key_obj, accumulated_val) in table.iter() {
+            for (_grouping_key_obj, accumulated_val) in table.iter() {
                 // The grouping_key_obj (GroupKey) needs to be convertible back
                 // to tuple fields if they are needed downstream. This logic depends
                 // heavily on the GroupKey definition.
