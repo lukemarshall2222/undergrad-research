@@ -33,19 +33,19 @@ impl fmt::Display for OpResult {
     }
 }
 
-pub fn int_of_op_result(input: &OpResult) -> i32 {
-    match input {
-        OpResult::Int(i) => *i,
-        _ => panic!("Expected Int variant"),
-    }
-}
+// pub fn int_of_op_result(input: &OpResult) -> i32 {
+//     match input {
+//         OpResult::Int(i) => *i,
+//         _ => panic!("Expected Int variant"),
+//     }
+// }
 
-pub fn float_of_op_result(input: &OpResult) -> f64 {
-    match input {
-        OpResult::Float(f) => *f,
-        _ => panic!("Expected Float variant"),
-    }
-}
+// pub fn float_of_op_result(input: &OpResult) -> f64 {
+//     match input {
+//         OpResult::Float(f) => *f,
+//         _ => panic!("Expected Float variant"),
+//     }
+// }
 
 pub fn string_of_tuple(t: &Tuple) -> String {
     t.iter()

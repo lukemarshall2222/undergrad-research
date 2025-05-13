@@ -9,7 +9,7 @@ pub type KeyExtractor   = Arc<dyn Fn(&Tuple)->(Tuple,Tuple) + Send + Sync>;
 /// filter_groups: pick only the listed keys out of a Tuple
 ///
 pub fn filter_groups(incl_keys: Vec<String>) 
-  -> impl Fn(&Tuple)->Tuple + Send + Sync + 'static 
+  -> impl Fn(&Tuple)->Tuple + Send + Sync + 'static
 {
     Arc::new(move |tup: &Tuple| {
         let mut out = Tuple::new();

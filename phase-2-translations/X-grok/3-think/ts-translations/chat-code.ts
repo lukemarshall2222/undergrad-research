@@ -496,7 +496,8 @@ function synFloodSonata(nextOp: Operator): Operator[] {
     const [joinOp1, joinOp2] = joinOperator(
         "eid",
         tup => [renameFilteredKeys([["ipv4.dst", "host"]])(tup), filterGroups(["syns"])(tup)],
-        tup => [renameFilteredKeys([["ipv4.src", "host"]])(tup), filterGroups(["synacks"])(tup)]
+        tup => [renameFilteredKeys([["ipv4.src", "host"]])(tup), filterGroups(["synacks"])(tup)],
+        nextOp
     );
     const mapOp = mapOperator(
         tup => new Map([...tup, ["syns+synacks", { type: 'Int', value: getMappedInt("syns", tup) + getMappedInt("synacks", tup) }]]),
@@ -505,7 +506,8 @@ function synFloodSonata(nextOp: Operator): Operator[] {
     const [joinOp3, joinOp4] = joinOperator(
         "eid",
         tup => [filterGroups(["host"])(tup), filterGroups(["syns+synacks"])(tup)],
-        tup => [renameFilteredKeys([["ipv4.dst", "host"]])(tup), filterGroups(["acks"])(tup)]
+        tup => [renameFilteredKeys([["ipv4.dst", "host"]])(tup), filterGroups(["acks"])(tup)],
+        nextOp
     );
     const mapFinal = mapOperator(
         tup => new Map([...tup, ["syns+synacks-acks", { type: 'Int', value: getMappedInt("syns+synacks", tup) - getMappedInt("acks", tup) }]]),
@@ -541,7 +543,8 @@ function completedFlows(nextOp: Operator): Operator[] {
     const [op1, op2] = joinOperator(
         "eid",
         tup => [renameFilteredKeys([["ipv4.dst", "host"]])(tup), filterGroups(["syns"])(tup)],
-        tup => [renameFilteredKeys([["ipv4.src", "host"]])(tup), filterGroups(["fins"])(tup)]
+        tup => [renameFilteredKeys([["ipv4.src", "host"]])(tup), filterGroups(["fins"])(tup)],
+        nextOp
     );
     const mapOp = mapOperator(
         tup => new Map([...tup, ["diff", { type: 'Int', value: getMappedInt("syns", tup) - getMappedInt("fins", tup) }]]),
@@ -576,7 +579,8 @@ function slowloris(nextOp: Operator): Operator[] {
     const [op1, op2] = joinOperator(
         "eid",
         tup => [filterGroups(["ipv4.dst"])(tup), filterGroups(["n_conns"])(tup)],
-        tup => [filterGroups(["ipv4.dst"])(tup), filterGroups(["n_bytes"])(tup)]
+        tup => [filterGroups(["ipv4.dst"])(tup), filterGroups(["n_bytes"])(tup)],
+        nextOp
     );
     const mapOp = mapOperator(
         tup => new Map([...tup, ["bytes_per_conn", { type: 'Int', value: Math.floor(getMappedInt("n_bytes", tup) / getMappedInt("n_conns", tup)) }]]),
@@ -609,7 +613,8 @@ function joinTest(nextOp: Operator): Operator[] {
     const [op1, op2] = joinOperator(
         "eid",
         tup => [renameFilteredKeys([["ipv4.src", "host"]])(tup), renameFilteredKeys([["ipv4.dst", "remote"]])(tup)],
-        tup => [renameFilteredKeys([["ipv4.dst", "host"]])(tup), filterGroups(["time"])(tup)]
+        tup => [renameFilteredKeys([["ipv4.dst", "host"]])(tup), filterGroups(["time"])(tup)],
+        nextOp
     );
 
     return [syns(op1), synacks(op2)];
@@ -626,11 +631,11 @@ function q4(nextOp: Operator): Operator {
 }
 
 // Queries to run
-const queries: Operator[] = [ident(dumpTupleOperator())];
+const queries: Operator[] = [ident(dumpAsCsv())];
 
 // Simulate tuple stream and run queries
 function runQueries(): void {
-    const tuples = Array.from({ length: 20 }, (_, i) =>
+    const tuples = Array.from({ length: 5 }, (_, i) =>
         tupleOfList([
             ["time", { type: 'Float', value: 0.000000 + i }],
             ["eth.src", { type: 'MAC', value: new Uint8Array([0x00, 0x11, 0x22, 0x33, 0x44, 0x55]) }],

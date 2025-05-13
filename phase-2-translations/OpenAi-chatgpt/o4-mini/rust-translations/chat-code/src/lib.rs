@@ -248,14 +248,3 @@ where F: Fn(&Tuple) -> Tuple + Send + Sync + 'static
         }
     })
 }
-
-/// You can now build pipelines exactly as in OCaml:
-///
-/// ```ignore
-/// let my_pipeline =
-///     chain(op_epoch(1.0, "eid".into()),
-///     chain(op_filter(|t| lookup_int("ipv4.proto", t) == 6),
-///     chain(op_map(|t| {/* ... */}), op_dump_tuple(false, Box::new(io::stdout())))));
-/// ```
-///
-/// And you can run it on a sequence of tuples just like `run_queries` in OCaml.
