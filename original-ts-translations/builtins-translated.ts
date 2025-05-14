@@ -259,7 +259,7 @@ export function sumInts(
     case opResultKind.Int:
       if (headers.has(searchKey)) {
         const opRes: opResult = headers.get(searchKey)!;
-        return { kind: opResultKind.Int, val: <number>opRes.val + initVal.val };
+        return { kind: opResultKind.Int, val: (opRes.val as number) + initVal.val };
       }
       throw new Error(
         `'sumVals' function failed to find integer value mapped to ${searchKey}`

@@ -16,7 +16,7 @@ let init_table_size: int = 10000
 (* returns an operator record with two functions:
     next: dumps a given Tuple to the given output
     reset: prints a reset message if the given show_reset is true  *)
-let dump_tuple ?(show_reset: bool=false) (outc: out_channel) 
+let dump ?(show_reset: bool=false) (outc: out_channel) 
             :  operator =
     {
         next = (fun (tup: tuple) -> dump_tuple outc tup);

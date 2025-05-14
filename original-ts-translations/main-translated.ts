@@ -343,7 +343,7 @@ function q4(end_op: Operator): Operator {
 }
 
 
-const queries: Operator[] = [$π(ident, dumpAsCsv(stdout))]
+const queries: Operator[] = [$π(pktsPerSrcDst as opCreator, dumpAsCsv(stdout))]
 
 function runQueries(): void {
     let headers: PacketHeaders[] = [];

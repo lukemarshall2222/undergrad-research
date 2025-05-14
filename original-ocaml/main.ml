@@ -142,7 +142,7 @@ let syn_flood_sonata (next_op: operator) : operator list =
                     (get_mapped_int "synacks" tup))) tup))
         @=> join_op1
     in [syns @=> join_op3 ; synacks @=> join_op4 ; acks @=> join_op2]
-    
+
 (* Sonata 7 *)
 let completed_flows (next_op: operator) : operator list =
     let threshold: int = 1 in
