@@ -1,9 +1,9 @@
 #![allow(dead_code)]
 
-use std::{cell::RefCell, collections::BTreeMap, io::stdout, rc::Rc};
+use std::{cell::RefCell, io::stdout, rc::Rc};
 
 use builtins::{
-    counter, create_distinct_operator, create_epoch_operator, create_filter_operator, create_groupby_operator, create_join_operator, create_map_operator, dump_as_csv, filter_groups, get_mapped_int, key_geq_int, rename_filtered_keys, single_group, sum_ints, FilterFunc, GroupingFunc, ReductionFunc
+    counter, create_distinct_operator, create_epoch_operator, create_filter_operator, create_groupby_operator, create_join_operator, create_map_operator, filter_groups, key_geq_int, rename_filtered_keys, single_group, sum_ints, FilterFunc, GroupingFunc, ReductionFunc
 };
 use ordered_float::OrderedFloat;
 use utils::{Headers, OpResult, OperatorRef};
@@ -14,8 +14,8 @@ mod utils;
 fn ident(next_op: OperatorRef) -> OperatorRef {
     create_map_operator(
         Box::new(move |mut headers: Headers| {
-            headers.remove("eth.src");
-            headers.remove("eth.dst");
+            headers.remove("eth.src".to_string());
+            headers.remove("eth.dst".to_string());
             headers
         }),
         next_op,
@@ -67,8 +67,8 @@ fn tcp_new_cons(next_op: OperatorRef) -> OperatorRef {
     let threshold: i32 = 40;
     let incl_keys: Vec<String> = Vec::from(["ipv4.dst".to_string()]);
     let filter_func: FilterFunc = Box::new(move |headers: &Headers| {
-        get_mapped_int("ipv4.proto".to_string(), &headers) == 6
-            && get_mapped_int("l4.flags".to_string(), &headers) == 2
+        headers.get_mapped_int("ipv4.proto".to_string()) == 6
+            && headers.get_mapped_int("l4.flags".to_string()) == 2
     });
     let groupby_func: GroupingFunc =
         Box::new(move |mut headers: Headers| filter_groups(incl_keys.clone(), &mut headers));
@@ -98,8 +98,8 @@ fn ssh_brute_force(next_op: OperatorRef) -> OperatorRef {
     ]);
     let incl_keys2: Vec<String> = Vec::from(["ipv4.dst".to_string(), "ipv4.len".to_string()]);
     let filter_func: FilterFunc = Box::new(move |headers: &Headers| {
-        get_mapped_int("ipv4.proto".to_string(), &headers) == 6
-            && get_mapped_int("l4.dport".to_string(), &headers) == 22
+        headers.get_mapped_int("ipv4.proto".to_string()) == 6
+            && headers.get_mapped_int("l4.dport".to_string()) == 22
     });
     let groupby_func: GroupingFunc =
         Box::new(move |mut headers: Headers| filter_groups(incl_keys.clone(), &mut headers));
@@ -208,8 +208,8 @@ fn syn_flood_sonata(next_op: OperatorRef) -> [OperatorRef; 3] {
         Box::new(move |next_op: OperatorRef| {
             let incl_keys: Vec<String> = Vec::from(["ipv4.dst".to_string()]);
             let filter_func: FilterFunc = Box::new(move |headers: &Headers| {
-                get_mapped_int("ipv4.proto".to_string(), &headers) == 6
-                    && get_mapped_int("l4.flags".to_string(), &headers) == 2
+                headers.get_mapped_int("ipv4.proto".to_string()) == 6
+                    && headers.get_mapped_int("l4.flags".to_string()) == 2
             });
             let groupby_func: GroupingFunc = Box::new(move |mut headers: Headers| {
                 filter_groups(incl_keys.clone(), &mut headers)
@@ -233,8 +233,8 @@ fn syn_flood_sonata(next_op: OperatorRef) -> [OperatorRef; 3] {
         Box::new(move |next_op: OperatorRef| {
             let incl_keys: Vec<String> = Vec::from(["ipv4.dst".to_string()]);
             let filter_func: FilterFunc = Box::new(move |headers: &Headers| {
-                get_mapped_int("ipv4.proto".to_string(), &headers) == 6
-                    && get_mapped_int("l4.flags".to_string(), &headers) == 16
+                headers.get_mapped_int("ipv4.proto".to_string()) == 6
+                    && headers.get_mapped_int("l4.flags".to_string()) == 16
             });
             let groupby_func: GroupingFunc = Box::new(move |mut headers: Headers| {
                 filter_groups(incl_keys.clone(), &mut headers)
@@ -258,8 +258,8 @@ fn syn_flood_sonata(next_op: OperatorRef) -> [OperatorRef; 3] {
         Box::new(move |next_op1: OperatorRef| {
             let incl_keys: Vec<String> = Vec::from(["ipv4.src".to_string()]);
             let filter_func: FilterFunc = Box::new(move |headers: &Headers| {
-                get_mapped_int("ipv4.proto".to_string(), &headers) == 6
-                    && get_mapped_int("l4.flags".to_string(), &headers) == 18
+                headers.get_mapped_int("ipv4.proto".to_string()) == 6
+                    && headers.get_mapped_int("l4.flags".to_string()) == 18
             });
             let groupby_func: GroupingFunc = Box::new(move |mut headers: Headers| {
                 filter_groups(incl_keys.clone(), &mut headers)
@@ -306,7 +306,7 @@ fn syn_flood_sonata(next_op: OperatorRef) -> [OperatorRef; 3] {
                     headers
                         .insert(
                             "syns+synacks".to_string(),
-                            utils::OpResult::Int(get_mapped_int("acks".to_string(), &headers)),
+                            utils::OpResult::Int(headers.get_mapped_int("acks".to_string())),
                         )
                         .unwrap();
                     headers
@@ -352,8 +352,8 @@ fn syn_flood_sonata(next_op: OperatorRef) -> [OperatorRef; 3] {
                         .insert(
                             "syns+synacks".to_string(),
                             utils::OpResult::Int(
-                                get_mapped_int("syns".to_string(), &headers)
-                                    + get_mapped_int("synacks".to_string(), &headers),
+                                headers.get_mapped_int("syns".to_string())
+                                    + headers.get_mapped_int("synacks".to_string()),
                             ),
                         )
                         .unwrap();
@@ -380,8 +380,8 @@ fn completed_flows(next_op: OperatorRef) -> [OperatorRef; 2] {
         Box::new(move |next_op: OperatorRef| {
             let incl_keys: Vec<String> = Vec::from(["ipv4.dst".to_string()]);
             let filter_func: FilterFunc = Box::new(move |headers: &Headers| {
-                get_mapped_int("ipv4.proto".to_string(), &headers) == 6
-                    && get_mapped_int("l4.flags".to_string(), &headers) == 2
+                headers.get_mapped_int("ipv4.proto".to_string()) == 6
+                    && headers.get_mapped_int("l4.flags".to_string()) == 2
             });
             let groupby_func: GroupingFunc = Box::new(move |mut headers: Headers| {
                 filter_groups(incl_keys.clone(), &mut headers)
@@ -405,8 +405,8 @@ fn completed_flows(next_op: OperatorRef) -> [OperatorRef; 2] {
         Box::new(move |next_op: OperatorRef| {
             let incl_keys: Vec<String> = Vec::from(["ipv4.src".to_string()]);
             let filter_func: FilterFunc = Box::new(move |headers: &Headers| {
-                get_mapped_int("ipv4.proto".to_string(), &headers) == 6
-                    && ((get_mapped_int("l4.flags".to_string(), &headers) & 1) == 1)
+                headers.get_mapped_int("ipv4.proto".to_string()) == 6
+                    && ((headers.get_mapped_int("l4.flags".to_string()) & 1) == 1)
             });
             let groupby_func: GroupingFunc = Box::new(move |mut headers: Headers| {
                 filter_groups(incl_keys.clone(), &mut headers)
@@ -455,7 +455,7 @@ fn completed_flows(next_op: OperatorRef) -> [OperatorRef; 2] {
                     headers
                         .insert(
                             "diff".to_string(),
-                            utils::OpResult::Int(get_mapped_int("syns".to_string(), &headers)),
+                            utils::OpResult::Int(headers.get_mapped_int("syns".to_string())),
                         )
                         .unwrap();
                     headers
@@ -490,10 +490,10 @@ fn slowloris(next_op: OperatorRef) -> [OperatorRef; 2] {
             ]);
             let incl_keys2: Vec<String> = Vec::from(["ipv4.dst".to_string()]);
             let filter_func: FilterFunc = Box::new(move |headers: &Headers| {
-                get_mapped_int("ipv4.proto".to_string(), &headers) == 6
+                headers.get_mapped_int("ipv4.proto".to_string()) == 6
             });
             let filter_func2: FilterFunc = Box::new(move |headers: &Headers| {
-                get_mapped_int("n_conns".to_string(), &headers) >= t1
+                headers.get_mapped_int("n_conns".to_string()) >= t1
             });
             let groupby_func: GroupingFunc = Box::new(move |mut headers: Headers| {
                 filter_groups(incl_keys.clone(), &mut headers)
@@ -523,10 +523,10 @@ fn slowloris(next_op: OperatorRef) -> [OperatorRef; 2] {
         Box::new(move |next_op: OperatorRef| {
             let incl_keys: Vec<String> = Vec::from(["ipv4.dst".to_string()]);
             let filter_func: FilterFunc = Box::new(move |headers: &Headers| {
-                get_mapped_int("ipv4.proto".to_string(), &headers) == 6
+                headers.get_mapped_int("ipv4.proto".to_string()) == 6
             });
             let filter_func2: FilterFunc = Box::new(move |headers: &Headers| {
-                get_mapped_int("n_bytes".to_string(), &headers) >= t2
+                headers.get_mapped_int("n_bytes".to_string()) >= t2
             });
             let groupby_func: GroupingFunc = Box::new(move |mut headers: Headers| {
                 filter_groups(incl_keys.clone(), &mut headers)
@@ -576,15 +576,15 @@ fn slowloris(next_op: OperatorRef) -> [OperatorRef; 2] {
                         .insert(
                             "bytes_per_conn".to_string(),
                             utils::OpResult::Int(
-                                get_mapped_int("n_bytes".to_string(), &headers)
-                                    / get_mapped_int("n_conns".to_string(), &headers),
+                                headers.get_mapped_int("n_bytes".to_string())
+                                    / headers.get_mapped_int("n_conns".to_string()),
                             ),
                         )
                         .unwrap();
                     headers
                 });
             let filter_func: FilterFunc = Box::new(move |headers: &Headers| {
-                get_mapped_int("bytes_per_conn".to_string(), headers) <= t3
+                headers.get_mapped_int("bytes_per_conn".to_string()) <= t3
             });
             create_join_operator(
                 None,
@@ -603,8 +603,8 @@ fn create_join_operator_test(next_op: OperatorRef) -> [OperatorRef; 2] {
     let mut syns: Box<dyn FnMut(OperatorRef) -> OperatorRef + 'static> =
         Box::new(move |next_op: OperatorRef| {
             let filter_func: FilterFunc = Box::new(move |headers: &Headers| {
-                get_mapped_int("ipv4.proto".to_string(), &headers) == 6
-                    && get_mapped_int("l4.flags".to_string(), &headers) == 2
+                headers.get_mapped_int("ipv4.proto".to_string()) == 6
+                    && headers.get_mapped_int("l4.flags".to_string()) == 2
             });
             create_epoch_operator(
                 epoch_dur,
@@ -616,8 +616,8 @@ fn create_join_operator_test(next_op: OperatorRef) -> [OperatorRef; 2] {
     let mut synacks: Box<dyn FnMut(OperatorRef) -> OperatorRef + 'static> =
         Box::new(move |next_op: OperatorRef| {
             let filter_func: FilterFunc = Box::new(move |headers: &Headers| {
-                get_mapped_int("ipv4.proto".to_string(), &headers) == 6
-                    && get_mapped_int("l4.flags".to_string(), &headers) == 18
+                headers.get_mapped_int("ipv4.proto".to_string()) == 6
+                    && headers.get_mapped_int("l4.flags".to_string()) == 18
             });
             create_epoch_operator(
                 epoch_dur,
@@ -687,7 +687,7 @@ fn create_query() -> OperatorRef {
 fn main() {
     let mut _query: OperatorRef = create_query();
     for i in 0..20 {
-        let mut header: BTreeMap<String, OpResult> = BTreeMap::new();
+        let mut header: Headers = Headers::new();
         header.insert("time".to_string(), OpResult::Float(OrderedFloat(i as f64)));
         header.insert("eth.src".to_string(), OpResult::MAC([0x00, 0x11, 0x22, 0x33, 0x44, 0x55]));
         header.insert("eth.dst".to_string(), OpResult::MAC([0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF]));

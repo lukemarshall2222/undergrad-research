@@ -1,7 +1,5 @@
 #![allow(dead_code)]
 
-use ordered_float::OrderedFloat;
-
 use crate::utils::{
     Headers, OpResult, Operator, OperatorRef, dump_headers, float_of_op_result, int_of_op_result,
     string_of_op_result,
@@ -14,100 +12,177 @@ use std::net::Ipv4Addr;
 use std::rc::Rc;
 use std::str::FromStr;
 
-pub fn create_dump_operator(show_reset: bool, outc: Box<dyn Write>) -> OperatorRef {
-    let outc = Rc::new(RefCell::new(outc));
+type OpCreator = Rc<RefCell<Box<dyn FnMut(Rc<RefCell<Operator>>) -> OperatorRef + 'static>>>;
 
-    let next_outc = Rc::clone(&outc);
-    let next: Box<dyn FnMut(&mut Headers) -> () + 'static> =
-        Box::new(move |headers: &mut Headers| {
-            dump_headers(&mut *next_outc.borrow_mut(), headers).unwrap();
-        });
-
-    let reset_outc = Rc::clone(&outc);
-    let reset: Box<dyn FnMut(&mut Headers) -> () + 'static> =
-        Box::new(move |headers: &mut Headers| {
-            if show_reset {
-                dump_headers(&mut *reset_outc.borrow_mut(), headers).unwrap();
-                writeln!(&mut reset_outc.borrow_mut(), "[rest]\n").unwrap();
-            } else {
-                ()
-            }
-        });
-    Rc::new(RefCell::new(Operator::new(next, reset)))
+struct Query {
+    ops: Vec<OpCreator>,
+    end_op: Option<OperatorRef>,
 }
 
-pub fn dump_as_csv(
-    static_field: Option<(String, String)>,
-    header: Option<bool>,
-    outc: Box<dyn Write>,
-) -> Operator {
-    let outc = Rc::new(RefCell::new(outc));
-    let mut first: bool = header.unwrap_or(true);
+impl Query {
+    pub fn new(middle_op: Option<OpCreator>, end_op: Option<Rc<RefCell<Operator>>>) -> Self {
+        let mut ops = Vec::new();
+        if let Some(op) = middle_op {
+            ops.push(Rc::clone(&op));
+        }
 
-    let next: Box<dyn FnMut(&mut Headers) -> () + 'static> =
-        Box::new(move |headers: &mut Headers| {
-            if first {
+        Query { ops, end_op }
+    }
+
+    pub fn create_dump_operator(mut self, show_reset: bool, outc: Box<dyn Write>) -> Self {
+        let outc = Rc::new(RefCell::new(outc));
+
+        let next_outc = Rc::clone(&outc);
+        let next: Box<dyn FnMut(&mut Headers) -> () + 'static> =
+            Box::new(move |headers: &mut Headers| {
+                dump_headers(&mut *next_outc.borrow_mut(), headers).unwrap();
+            });
+
+        let reset_outc = Rc::clone(&outc);
+        let reset: Box<dyn FnMut(&mut Headers) -> () + 'static> =
+            Box::new(move |headers: &mut Headers| {
+                if show_reset {
+                    dump_headers(&mut *reset_outc.borrow_mut(), headers).unwrap();
+                    writeln!(&mut reset_outc.borrow_mut(), "[rest]\n").unwrap();
+                } else {
+                    ()
+                }
+            });
+
+        self.end_op = Some(Rc::new(RefCell::new(Operator::new(next, reset))));
+        self
+    }
+
+    pub fn dump_as_csv(
+        mut self,
+        static_field: Option<(String, String)>,
+        header: Option<bool>,
+        outc: Box<dyn Write>,
+    ) -> Self {
+        let outc = Rc::new(RefCell::new(outc));
+        let mut first: bool = header.unwrap_or(true);
+
+        let next: Box<dyn FnMut(&mut Headers) -> () + 'static> =
+            Box::new(move |headers: &mut Headers| {
+                if first {
+                    match &static_field {
+                        Some((key, _)) => {
+                            writeln!(outc.borrow_mut(), "{}", key).unwrap();
+                        }
+                        None => (),
+                    }
+                    first = false;
+                }
+
+                for (key, _) in headers.items_mut() {
+                    writeln!(outc.borrow_mut(), "{}, ", key).unwrap();
+                }
+                writeln!(outc.borrow_mut(), "\n").unwrap();
+
                 match &static_field {
-                    Some((key, _)) => {
-                        writeln!(outc.borrow_mut(), "{}", key).unwrap();
+                    Some((_, val)) => {
+                        writeln!(outc.borrow_mut(), "{}", val).unwrap();
                     }
                     None => (),
                 }
-                first = false;
-            }
 
-            for (key, _) in headers.iter_mut() {
-                writeln!(outc.borrow_mut(), "{}, ", key).unwrap();
-            }
-            writeln!(outc.borrow_mut(), "\n").unwrap();
-
-            match &static_field {
-                Some((_, val)) => {
-                    writeln!(outc.borrow_mut(), "{}", val).unwrap();
+                for (_, val) in headers.items_mut() {
+                    writeln!(outc.borrow_mut(), "{}, ", val).unwrap();
                 }
-                None => (),
-            }
+                writeln!(outc.borrow_mut(), "\n").unwrap();
+            });
 
-            for (_, val) in headers.iter_mut() {
-                writeln!(outc.borrow_mut(), "{}, ", val).unwrap();
-            }
-            writeln!(outc.borrow_mut(), "\n").unwrap();
-        });
+        let reset: Box<dyn FnMut(&mut Headers) -> () + 'static> =
+            Box::new(move |_headers: &mut Headers| ());
 
-    let reset: Box<dyn FnMut(&mut Headers) -> () + 'static> =
-        Box::new(move |_headers: &mut Headers| ());
+        self.end_op = Some(Rc::new(RefCell::new(Operator::new(next, reset))));
+        self
+    }
 
-    Operator::new(next, reset)
-}
+    pub fn dump_walts_csv(mut self, filename: String) -> Self {
+        let mut outc: Box<dyn Write> = Box::new(stdout());
+        let mut first: bool = true;
 
-pub fn dump_walts_csv(filename: String) -> OperatorRef {
-    let mut outc: Box<dyn Write> = Box::new(stdout());
-    let mut first: bool = true;
+        let next: Box<dyn FnMut(&mut Headers) -> () + 'static> =
+            Box::new(move |headers: &mut Headers| {
+                if first {
+                    outc = Box::new(File::open(&filename).unwrap());
+                    first = false;
+                }
+                writeln!(
+                    outc,
+                    "{}, {}, {}, {}, {}, {}, {}\n",
+                    string_of_op_result(headers.get("src_ip").unwrap_or(&OpResult::Empty)),
+                    string_of_op_result(headers.get("dst_ip").unwrap_or(&OpResult::Empty)),
+                    string_of_op_result(headers.get("src_l4_port").unwrap_or(&OpResult::Empty)),
+                    string_of_op_result(headers.get("dst_l4_port").unwrap_or(&OpResult::Empty)),
+                    string_of_op_result(headers.get("packet_count").unwrap_or(&OpResult::Empty)),
+                    string_of_op_result(headers.get("byte_count").unwrap_or(&OpResult::Empty)),
+                    string_of_op_result(headers.get("epoch_id").unwrap_or(&OpResult::Empty)),
+                )
+                .unwrap();
+            });
 
-    let next: Box<dyn FnMut(&mut Headers) -> () + 'static> =
-        Box::new(move |headers: &mut Headers| {
-            if first {
-                outc = Box::new(File::open(&filename).unwrap());
-                first = false;
-            }
-            writeln!(
-                outc,
-                "{}, {}, {}, {}, {}, {}, {}\n",
-                string_of_op_result(headers.get("src_ip").unwrap_or(&OpResult::Empty)),
-                string_of_op_result(headers.get("dst_ip").unwrap_or(&OpResult::Empty)),
-                string_of_op_result(headers.get("src_l4_port").unwrap_or(&OpResult::Empty)),
-                string_of_op_result(headers.get("dst_l4_port").unwrap_or(&OpResult::Empty)),
-                string_of_op_result(headers.get("packet_count").unwrap_or(&OpResult::Empty)),
-                string_of_op_result(headers.get("byte_count").unwrap_or(&OpResult::Empty)),
-                string_of_op_result(headers.get("epoch_id").unwrap_or(&OpResult::Empty)),
-            )
-            .unwrap();
-        });
+        let reset: Box<dyn FnMut(&mut Headers) -> () + 'static> =
+            Box::new(move |_headers: &mut Headers| ());
 
-    let reset: Box<dyn FnMut(&mut Headers) -> () + 'static> =
-        Box::new(move |_headers: &mut Headers| ());
+        self.end_op = Some(Rc::new(RefCell::new(Operator::new(next, reset))));
+        self
+    }
 
-    Rc::new(RefCell::new(Operator::new(next, reset)))
+    pub fn create_meta_meter(
+        mut self,
+        static_field: Option<String>,
+        name: String,
+        outc: Box<dyn Write>,
+    ) -> Self {
+        let outc_rc = Rc::new(RefCell::new(outc));
+        let name_clone = name.clone();
+        let static_field_clone = static_field.clone();
+
+        let creator_func: OpCreator =
+            Rc::new(RefCell::new(Box::new(move |next_op: OperatorRef| {
+                let epoch_count = Rc::new(RefCell::new(0));
+                let headers_count = Rc::new(RefCell::new(0));
+                let next_op_ref_clone = Rc::clone(&next_op);
+                let outc_clone = Rc::clone(&outc_rc);
+                let name_clone_inner = name_clone.clone();
+                let static_field_clone_inner = static_field_clone.clone();
+                let epoch_count_clone = Rc::clone(&epoch_count);
+                let headers_count_clone = Rc::clone(&headers_count);
+                let next_op_ref_clone_next = Rc::clone(&next_op_ref_clone);
+                let next_op_ref_clone_reset = Rc::clone(&next_op_ref_clone);
+
+                let next: Box<dyn FnMut(&mut Headers) + 'static> =
+                    Box::new(move |headers: &mut Headers| {
+                        *headers_count_clone.borrow_mut() += 1;
+                        (next_op_ref_clone_next.borrow_mut().next)(headers)
+                    });
+
+                let reset: Box<dyn FnMut(&mut Headers) + 'static> =
+                    Box::new(move |headers: &mut Headers| {
+                        writeln!(
+                            &mut *outc_clone.borrow_mut(),
+                            "{}, {}, {}, {}\n",
+                            *epoch_count_clone.borrow(),
+                            name_clone_inner,
+                            *headers_count.borrow(),
+                            match &static_field_clone_inner {
+                                Some(v) => v.as_str(),
+                                None => "",
+                            }
+                        )
+                        .unwrap();
+                        *headers_count.borrow_mut() = 0;
+                        *epoch_count.borrow_mut() += 1;
+                        (next_op_ref_clone_reset.borrow_mut().reset)(headers)
+                    });
+
+                Rc::new(RefCell::new(Operator::new(next, reset)))
+            })));
+        self.ops.push(creator_func);
+        self
+    }
 }
 
 pub fn get_ip_or_zero(input: String) -> OpResult {
@@ -117,41 +192,6 @@ pub fn get_ip_or_zero(input: String) -> OpResult {
     }
 }
 
-pub fn create_meta_meter(
-    static_field: Option<String>,
-    name: String,
-    mut outc: Box<dyn Write>,
-    next_op: OperatorRef,
-) -> OperatorRef {
-    let mut epoch_count: i32 = 0;
-    let mut _headers_count: i32 = 0;
-    let next_op_ref_clone = Rc::clone(&next_op);
-
-    let next: Box<dyn FnMut(&mut Headers) + 'static> = Box::new(move |headers: &mut Headers| {
-        _headers_count += 1;
-        (next_op.borrow_mut().next)(headers)
-    });
-
-    let reset: Box<dyn FnMut(&mut Headers) + 'static> = Box::new(move |headers: &mut Headers| {
-        writeln!(
-            outc,
-            "{}, {}, {}, {}\n",
-            epoch_count,
-            name,
-            _headers_count,
-            match &static_field {
-                Some(v) => v,
-                None => "",
-            }
-        )
-        .unwrap();
-        _headers_count = 0;
-        epoch_count += 1;
-        (next_op_ref_clone.borrow_mut().reset)(headers)
-    });
-
-    Rc::new(RefCell::new(Operator::new(next, reset)))
-}
 
 pub fn create_epoch_operator(
     epoch_width: f64,
@@ -179,16 +219,14 @@ pub fn create_epoch_operator(
             _epoch_boundary += epoch_width;
             eid += 1;
         }
-        headers
-            .insert(key_out.clone(), OpResult::Int(eid))
-            .unwrap();
+        headers.insert(key_out.clone(), OpResult::Int(eid)).unwrap();
         (next_op.borrow_mut().next)(headers)
     });
 
     let reset: Box<dyn FnMut(&mut Headers) + 'static> = Box::new(move |_headers: &mut Headers| {
         let mut new_hmap: BTreeMap<String, OpResult> = BTreeMap::new();
         new_hmap.insert(key_out_cp.clone(), OpResult::Int(eid));
-        (next_op_ref.borrow_mut().reset)(&mut new_hmap);
+        (next_op_ref.borrow_mut().reset)(&mut Headers::new());
         _epoch_boundary = 0.0;
         eid = 0;
     });
@@ -215,14 +253,6 @@ pub fn create_filter_operator(f: FilterFunc, next_op: OperatorRef) -> OperatorRe
 
 pub fn key_geq_int(key: String, threshold: i32, headers: &Headers) -> bool {
     int_of_op_result(headers.get(&key).unwrap_or(&OpResult::Empty)).unwrap() >= threshold
-}
-
-pub fn get_mapped_int(key: String, headers: &Headers) -> i32 {
-    int_of_op_result(headers.get(&key).unwrap_or(&OpResult::Empty)).unwrap()
-}
-
-pub fn get_mapped_float(key: String, headers: &Headers) -> OrderedFloat<f64> {
-    float_of_op_result(headers.get(&key).unwrap_or(&OpResult::Empty)).unwrap()
 }
 
 pub fn create_map_operator(
@@ -252,13 +282,13 @@ pub type GroupingFunc = Box<dyn Fn(Headers) -> Headers>;
 pub type ReductionFunc = Box<dyn Fn(OpResult, &mut Headers) -> OpResult>;
 
 pub fn union_headers(headers1: &mut Headers, headers2: &mut Headers) -> Headers {
-    let mut new_headers: Headers = BTreeMap::new();
+    let mut new_headers: Headers = Headers::new();
 
-    for (key, val) in headers1.iter_mut() {
+    for (key, val) in headers1.items_mut() {
         new_headers.insert(key.clone(), val.clone());
     }
 
-    for (key, val) in headers2.iter_mut() {
+    for (key, val) in headers2.items_mut() {
         new_headers.insert(key.clone(), val.clone());
     }
 
@@ -303,8 +333,8 @@ pub fn create_groupby_operator(
 }
 
 pub fn filter_groups(incl_keys: Vec<String>, headers: &mut Headers) -> Headers {
-    let mut new_headers: Headers = BTreeMap::new();
-    for (key, val) in headers.iter_mut() {
+    let mut new_headers: Headers = Headers::new();
+    for (key, val) in headers.items_mut() {
         if incl_keys.contains(key) {
             new_headers.insert(key.clone(), val.clone());
         }
@@ -313,7 +343,7 @@ pub fn filter_groups(incl_keys: Vec<String>, headers: &mut Headers) -> Headers {
 }
 
 pub fn single_group(_headers: Headers) -> Headers {
-    BTreeMap::new()
+    Headers::new()
 }
 
 pub fn counter(val: OpResult, _headers: &mut Headers) -> OpResult {
@@ -331,7 +361,7 @@ pub fn sum_ints(
 ) -> Result<OpResult, Error> {
     match init_val {
         OpResult::Empty => Ok(OpResult::Int(1)),
-        OpResult::Int(i) => match headers.get_mut(&search_key) {
+        OpResult::Int(i) => match headers.headers.get_mut(&search_key) {
             Some(OpResult::Int(n)) => Ok(OpResult::Int(*n + i)),
             _ => Err(Error::new(
                 ErrorKind::InvalidInput,
@@ -353,7 +383,7 @@ pub fn create_distinct_operator(groupby: GroupingFunc, next_op: OperatorRef) -> 
     let mut _reset_counter: i32 = 0;
 
     let next: Box<dyn FnMut(&mut Headers) + 'static> = Box::new(move |headers: &mut Headers| {
-        let mut _grouping_key: BTreeMap<String, OpResult> = groupby(headers.clone());
+        let mut _grouping_key: Headers = groupby(headers.clone());
         next_htbl_ref.borrow_mut().insert(_grouping_key, true);
     });
 
@@ -390,7 +420,9 @@ pub fn create_split_operator(l: OperatorRef, r: OperatorRef) -> OperatorRef {
 pub type KeyExtractor = Box<dyn FnMut(Headers) -> (Headers, Headers)>;
 
 pub fn singleton(key: String, val: OpResult) -> Headers {
-    BTreeMap::from([(key, val)])
+    let mut new_h: Headers = Headers::new();
+    new_h.insert(key, val);
+    new_h
 }
 
 pub fn create_join_operator(
@@ -447,8 +479,7 @@ pub fn create_join_operator(
                 Box::new(move |mut headers: &mut Headers| {
                     let mut _headers_cp = &mut headers;
                     let (key, vals) = f(_headers_cp.clone());
-                    let mut _curr_epoch: i32 =
-                        get_mapped_int(eid_key.borrow_mut().clone(), headers);
+                    let mut _curr_epoch: i32 = headers.get_mapped_int(eid_key.borrow_mut().clone());
 
                     while _curr_epoch > *curr_epoch_ref.borrow() {
                         if *other_epoch_ref1.borrow() > *curr_epoch_ref.borrow() {
@@ -486,7 +517,7 @@ pub fn create_join_operator(
             let reset: Box<dyn FnMut(&mut Headers) + 'static> =
                 Box::new(move |headers: &mut Headers| {
                     let mut _curr_epoch: i32 =
-                        get_mapped_int(eid_key_ref2.borrow().clone(), headers);
+                        headers.get_mapped_int(eid_key_ref2.borrow().clone());
                     while _curr_epoch > curr_epoch_ref1.borrow().clone() {
                         if *other_epoch_ref2.borrow() > *curr_epoch_ref1.borrow() {
                             (next_op_ref2.borrow_mut().reset)(&mut singleton(
@@ -525,7 +556,7 @@ pub fn rename_filtered_keys(
     renaming_pairs: Vec<(String, String)>,
     headers: &mut Headers,
 ) -> Headers {
-    let mut new_headers: BTreeMap<String, OpResult> = BTreeMap::new();
+    let mut new_headers: Headers = Headers::new();
     for (new_key, old_key) in renaming_pairs {
         if let Some(val) = headers.get(&old_key) {
             new_headers.insert(new_key, val.clone()).unwrap();

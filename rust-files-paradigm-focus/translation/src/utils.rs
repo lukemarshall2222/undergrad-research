@@ -24,7 +24,10 @@ impl fmt::Display for OpResult {
     }
 }
 
-pub type Headers = BTreeMap<String, OpResult>;
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Headers {
+    pub headers: BTreeMap<String, OpResult>,
+}
 pub struct Operator {
     pub next: Box<dyn FnMut(&mut Headers) -> () + 'static>,
     pub reset: Box<dyn FnMut(&mut Headers) -> () + 'static>,
@@ -38,6 +41,101 @@ impl<'a> Operator {
         reset: Box<dyn FnMut(&mut Headers) + 'static>,
     ) -> Operator {
         Operator { next, reset }
+    }
+}
+
+impl Headers {
+    pub fn new() -> Self {
+        Headers {
+            headers: BTreeMap::new(),
+        }
+    }
+
+    pub fn with_map(map: BTreeMap<String, OpResult>) -> Self {
+        Self { headers: map }
+    }
+
+    pub fn get(&self, key: &str) -> Option<&OpResult> {
+        self.headers.get(key)
+    }
+
+    pub fn insert(&mut self, key: String, val: OpResult) -> Option<OpResult> {
+        self.headers.insert(key, val)
+    }
+
+    pub fn remove(&mut self, key: String) {
+        self.headers.remove(&key);
+    }
+
+    pub fn items(&self) -> impl Iterator<Item = (&String, &OpResult)> {
+        self.headers.iter()
+    }
+
+    pub fn items_mut(&mut self) -> impl Iterator<Item = (&String, &mut OpResult)> {
+        self.headers.iter_mut()
+    }
+
+    pub fn union(&self, other: &Headers) -> Headers {
+        let mut unioned_headers: BTreeMap<String, OpResult> = other.headers.clone();
+        unioned_headers.extend(self.headers.iter().map(|(k, v)| (k.clone(), v.clone())));
+        Headers {
+            headers: unioned_headers,
+        }
+    }
+
+    pub fn get_mapped_int(&self, key: String) -> i32 {
+        int_of_op_result(self.headers.get(&key).unwrap_or(&OpResult::Empty)).unwrap()
+    }
+
+    pub fn get_mapped_float(&self, key: String) -> OrderedFloat<f64> {
+        float_of_op_result(self.headers.get(&key).unwrap_or(&OpResult::Empty)).unwrap()
+    }
+
+    pub fn to_string(&self) -> String {
+        self.headers
+            .iter()
+            .fold(String::new(), |mut acc, (key, val)| {
+                acc.push_str(format!("\"{}\" => {}, ", key, string_of_op_result(val)).as_str());
+                acc
+            })
+    }
+
+    pub fn headers_of_list(&mut self, header_list: &[(String, OpResult)]) -> &mut Self {
+        let mut hmap: BTreeMap<String, OpResult> = BTreeMap::new();
+        for (key, val) in header_list {
+            hmap.insert(key.clone(), val.clone());
+        }
+        self.headers = hmap;
+        self
+    }
+
+    pub fn lookup_int(&self, key: &String) -> Result<i32, Error> {
+        match self.headers.get(key) {
+            Some(i) => int_of_op_result(i),
+            None => Err(Error::new(
+                ErrorKind::InvalidData,
+                "key given as argument is not a valid key of the given BTreeMap",
+            )),
+        }
+    }
+
+    pub fn lookup_float(&self, key: &String) -> Result<OrderedFloat<f64>, Error> {
+        match self.headers.get(key) {
+            Some(f) => float_of_op_result(f),
+            None => Err(Error::new(
+                ErrorKind::InvalidData,
+                "key given as argument is not a valid key of the given BTreeMap",
+            )),
+        }
+    }
+}
+
+impl fmt::Display for Headers {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for (key, value) in &self.headers {
+            write!(f, r#""{}" => {}, "#, key, string_of_op_result(value))?;
+        }
+        Ok(())
     }
 }
 
@@ -101,44 +199,7 @@ pub fn string_of_op_result(input: &OpResult) -> String {
     }
 }
 
-pub fn string_of_headers(input_headers: &Headers) -> String {
-    input_headers
-        .iter()
-        .fold(String::new(), |mut acc, (key, val)| {
-            acc.push_str(format!("\"{}\" => {}, ", key, string_of_op_result(val)).as_str());
-            acc
-        })
-}
-
-pub fn headers_of_list(header_list: &[(String, OpResult)]) -> Headers {
-    let mut hmap: BTreeMap<String, OpResult> = BTreeMap::new();
-    for (key, val) in header_list {
-        hmap.insert(key.clone(), val.clone());
-    }
-    hmap
-}
-
 pub fn dump_headers<'a, W: Write>(outc: &'a mut W, headers: &Headers) -> Result<&'a W, Error> {
-    writeln!(outc, "{}", string_of_headers(headers)).unwrap();
+    writeln!(outc, "{}", headers.to_string()).unwrap();
     Ok(outc)
-}
-
-pub fn lookup_int(key: &String, headers: &Headers) -> Result<i32, Error> {
-    match headers.get(key) {
-        Some(i) => int_of_op_result(i),
-        None => Err(Error::new(
-            ErrorKind::InvalidData,
-            "key given as argument is not a valid key of the given BTreeMap",
-        )),
-    }
-}
-
-pub fn lookup_float(key: &String, headers: &Headers) -> Result<OrderedFloat<f64>, Error> {
-    match headers.get(key) {
-        Some(f) => float_of_op_result(f),
-        None => Err(Error::new(
-            ErrorKind::InvalidData,
-            "key given as argument is not a valid key of the given BTreeMap",
-        )),
-    }
 }

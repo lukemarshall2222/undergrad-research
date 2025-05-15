@@ -24,8 +24,7 @@ class Query():
             self.reset = reset
 
     def __init__(self, middle_op: Optional[OpCreator] = None,
-                 end_op: Optional[Operator] = None,
-                 additional_query: Optional["Query"] = None) -> None:
+                 end_op: Optional[Operator] = None) -> None:
         self.__ops: list[OpCreator | BranchCreator] = []
         self.__end_op: Query.Operator | None = None
 
@@ -38,13 +37,6 @@ class Query():
         match end_op:
             case Query.Operator():
                 self.__end_op = end_op
-            case None:
-                pass
-
-        match additional_query:
-            case Query():
-                self.__end_op = additional_query.__end_op
-                self.__ops += additional_query.__ops
             case None:
                 pass
 
