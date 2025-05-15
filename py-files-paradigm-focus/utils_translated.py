@@ -1,16 +1,15 @@
 
-from typing import Iterator, TextIO, ItemsView
+from typing import TextIO, ItemsView
 from abc import ABC
 from dataclasses import dataclass
 from ipaddress import IPv4Address
 from collections import deque
-from functools import partial
 
 type op_result_type = float | int | IPv4Address | bytearray | None
 
 @dataclass
 class Op_result(ABC):
-    val: op_result_type = None
+    val: op_result_type
 
     def __hash__(self): 
         return hash(self.val)
@@ -19,26 +18,41 @@ class Op_result(ABC):
 class Float(Op_result):
     val: float
 
+    def __hash__(self): 
+        return hash(self.val)
+
 @dataclass
 class Int(Op_result):
     val: int
+
+    def __hash__(self): 
+        return hash(self.val)
 
 @dataclass
 class Ipv4(Op_result):
     val: IPv4Address
 
+    def __hash__(self): 
+        return hash(self.val)
+
 @dataclass
 class MAC(Op_result):
     val: bytearray
+
+    def __hash__(self): 
+        return hash(self.val)
 
 @dataclass
 class Empty(Op_result):
     val: None = None
 
+    def __hash__(self): 
+        return hash(self.val)
+
 
 class PacketHeaders:
     def __init__(self, data: dict[str, Op_result] | None=None):
-        self.headers: dict[str, 'Op_result'] | None = data if data is not None else {}
+        self.headers: dict[str, 'Op_result'] = data if data is not None else {}
 
     def __iter__(self):
         return iter(self.headers)
@@ -86,9 +100,9 @@ class PacketHeaders:
     
     def string_of_packet(self) -> str:
         return "".join(f'"{key}" => {string_of_op_result(val)}, ' 
-                   for key, val in self.headers)
+                   for key, val in self.headers.items())
         
-    def packet_of_list(self, packet_list: deque[tuple[str, Op_result]]) -> "PacketHeaders":
+    def packet_of_list(self, packet_list: deque[tuple[str, Op_result]]):
         self.headers = {key: val for key, val in list(packet_list)}
 
     def dump_packet(self, outc: TextIO) -> None:
@@ -105,49 +119,40 @@ def string_of_mac(buf: bytearray) -> str:
                 {buf[4]: .2f}:{buf[5]: .2f}"
 
 def tcp_flags_to_strings(flags: int) -> str:
-    tcp_flags: list[str] = [ 
-                            "FIN", "SYN", "RST", "PSH", 
-                            "ACK", "URG", "ECE", "CWR", 
-                           ]
-    def tcp_flags_map() -> Iterator[list[tuple[str, float]]]:
-        for i, flag in enumerate(tcp_flags):
-            yield (flag, 1 << i)
-    return "|".join(flag for flag, val in tcp_flags_map() 
-                    if (flags & val) == val)
+    tcp_flags = [ 
+        "FIN", "SYN", "RST", "PSH", 
+        "ACK", "URG", "ECE", "CWR"
+    ]
+    return "|".join(
+        flag for i, flag in enumerate(tcp_flags)
+        if flags & (1 << i)
+    )
+
 
 def int_of_op_result(input: Op_result) -> int:
-    match input.kind:
-        case Op_result.INT: return input.val
+    match input:
+        case Int(): return input.val
         case _:
             raise TypeError("Trying to extract int from non-int result")
 
 def float_of_op_result(input: Op_result) -> float:
-    match input.kind:
-        case Op_result.FLOAT: return input.val
+    match input:
+        case Float(): return input.val
         case _:
             raise TypeError("Trying to extract float from non-float result")
         
 def string_of_op_result(input: Op_result) -> str:
-    match input.kind:
-        case Op_result.FLOAT | Op_result.INT:
-            return f"{input.val}"
-        case Op_result.IPV4:
+    match input:
+        case Float() | Int():
+            return str(input.val)
+        case Ipv4():
             return str(IPv4Address(input.val))
-        case Op_result.MAC:
+        case MAC():
             return string_of_mac(input.val)
-        case Op_result.Empty:
+        case Empty():
             "Empty"
         case _:
             raise RuntimeError("Reached unreachable code")
-
-def unwrap_function(func):
-    if isinstance(func, partial):
-        func = func.func
-        args = func.args
-    else:
-        args = ()
-
-    func = getattr(func, "__func__", func)
-
-    return func, args
+    
+    return ""
         

@@ -1,54 +1,60 @@
 from utils_translated import *
 from builtins_translated import *
 from functools import partial
-from sys import stdout
-from typing import cast, Callable
+from typing import cast
 
 epoch_dur: float = 5.0
 threshold: int = 40
 
-ident = Query()\
+ident: Query = Query()\
     .map(remove_keys) \
     .collect()
 
-count_pkts = Query() \
+count_pkts: Query = Query() \
     .epoch(1.0, "eid") \
     .groupby(single_group, counter, "pkts") \
     .collect()
 
-pkts_per_src_dst = Query() \
+pkts_per_src_dst: Query = Query() \
     .epoch(1.0, "eid") \
     .groupby(partial(filter_groups, ["ipv4.src", "ipv4.dst"]), counter, "pkts") \
     .collect()
 
-distinct_srcs = Query() \
+distinct_srcs: Query = Query() \
     .epoch(1.0, "eid") \
     .distinct(partial(filter_groups, ["ipv4.src"])) \
     .groupby(single_group, counter, "srcs") \
     .collect()
 
-tcp_new_cons = Query() \
+tcp_new_cons: Query = Query() \
     .epoch(1.0, "eid") \
     .filter(partial(filter_helper, 6, 2)) \
     .groupby(partial(filter_groups, ["ipv4.dst"]), counter, "cons") \
     .filter(partial(key_geq_int, "cons", 40)) \
     .collect()
 
-ssh_brute_force = Query() \
+ssh_brute_force: Query = Query() \
     .epoch(1.0, "eid") \
     .filter(partial(filter_helper, 6, 22)) \
     .groupby(partial(filter_groups, ["ipv4.src", "ipv4.dst", "ipv4.len"]), counter, "srcs") \
     .filter(partial(key_geq_int, "srcs", 40)) \
     .collect()
 
-super_spreader = Query() \
+super_spreader: Query = Query() \
     .epoch(epoch_dur, "eid") \
     .distinct(partial(filter_groups, ["ipv4.src", "l4.dport"])) \
     .groupby(partial(key_geq_int, "ports", threshold), counter, "ports") \
     .filter(partial(key_geq_int, "ports", threshold)) \
     .collect()
 
-ddos = Query() \
+port_scan: Query = Query() \
+    .epoch(1.0, "eid") \
+    .distinct(partial(filter_groups, ["ipv4.src", "l4.dport"])) \
+    .groupby(partial(filter_groups, ["ipv4.src"]), counter, "potrts") \
+    .filter(partial(key_geq_int, "ports", threshold)) \
+    .collect()
+
+ddos: Query = Query() \
     .epoch(epoch_dur, "eid") \
     .distinct(partial(filter_groups, ["ipv4.src", "ipv4.dst"])) \
     .groupby(partial(filter_groups, ["ipv4.dst"]), counter, "srcs") \
@@ -56,7 +62,7 @@ ddos = Query() \
     .collect()
 
 
-def syn_flood_sonata(next_op: Query = Query().continue_flow()) -> list[QueryMethods]:
+def syn_flood_sonata(end_query: Query = Query().dump_as_csv()) -> list[Query.Operator]:
     join_queries: BranchedQuery = Query() \
         .join(lambda packet:
               (filter_groups(["host"], packet),
@@ -65,27 +71,27 @@ def syn_flood_sonata(next_op: Query = Query().continue_flow()) -> list[QueryMeth
               (rename_filtered_keys([("ipv4.dst", "host")], packet),
                filter_groups(["acks"], packet))) \
         .map(lambda packet:
-             packet.__setitem__("syns+synacks-acks", Op_result(Op_result.INT,
-                                                               packet.get_mapped_int("syns+synacks") -
-                                                               packet.get_mapped_int("acks")))) \
+             packet.__setitem__("syns+synacks-acks", Int(
+                 packet.get_mapped_int("syns+synacks") -
+                 packet.get_mapped_int("acks")))) \
         .filter(partial(key_geq_int, "syns+synacks-acks", threshold-37)) \
-        .add_query(next_op) \
+        .add_query(end_query) \
         .collect()
     join_query1, join_query2 = join_queries
 
-    join_queries2: BranchedQuery = Query(join_query1) \
-        .map(lambda packet:
-             packet.__setitem__
-             ("syns+synacks",
-              Op_result(Op_result.INT,
-                        packet.get_mapped_int("syns") +
-                        packet.get_mapped_int("synacks")))) \
+    join_queries2: BranchedQuery = Query() \
         .join(lambda packet:
               (rename_filtered_keys([("ipv4.dst", "host")], packet),
                filter_groups(["syns"], packet)),
               lambda packet:
               (rename_filtered_keys([("ipv4.src", "host")], packet),
                filter_groups(["synacks"], packet))) \
+        .map(lambda packet:
+             packet.__setitem__
+             ("syns+synacks",
+              Int(
+                  packet.get_mapped_int("syns") +
+                  packet.get_mapped_int("synacks")))) \
         .add_query(join_query1) \
         .collect()
     join_query3, join_query4 = join_queries2
@@ -94,20 +100,16 @@ def syn_flood_sonata(next_op: Query = Query().continue_flow()) -> list[QueryMeth
         .epoch(epoch_dur, "eid") \
         .filter(partial(filter_helper, 6, 2)) \
         .groupby(partial(filter_groups, ["ipv4.dst"]), counter, "syns") \
-        .add_query(next_op) \
-        .collect()
 
     synacks: Query = Query(join_query4) \
         .epoch(epoch_dur, "eid") \
         .filter(partial(filter_helper, 6, 18)) \
         .groupby(partial(filter_groups, ["ipv4.dst"]), counter, "synacks") \
-        .add_query(next_op) \
 
     acks: Query = Query(join_query2) \
         .epoch(epoch_dur, "eid") \
         .filter(partial(filter_groups, 6, 16)) \
         .groupby(partial(filter_groups, ["ipv4.dst"]), counter, "acks") \
-        .add_query(next_op) \
 
     return [
         syns.add_query((join_query3)).collect(),
@@ -116,9 +118,9 @@ def syn_flood_sonata(next_op: Query = Query().continue_flow()) -> list[QueryMeth
     ]
 
 
-def completed_flows(next_query: Query = Query().continue_flow()) -> list[QueryMethods]:
+def completed_flows(end_query) -> list[Query.Operator]:
 
-    join_queries: BranchedQuery = Query(next_query) \
+    join_queries: BranchedQuery = Query(end_query) \
         .join((lambda packet:
                (rename_filtered_keys([("ipv4.dst", "host")], packet),
                    filter_groups(["syns"], packet))),
@@ -131,7 +133,7 @@ def completed_flows(next_query: Query = Query().continue_flow()) -> list[QueryMe
                                  packet.get_mapped_int("syns") -
                                  packet.get_mapped_int("fins"))))) \
         .filter(partial(key_geq_int, "diff", threshold-39)) \
-        .add_query(next_query) \
+        .add_query(end_query) \
         .collect()
     join_query1, join_query2 = join_queries
 
@@ -140,7 +142,6 @@ def completed_flows(next_query: Query = Query().continue_flow()) -> list[QueryMe
         .filter(partial(filter_helper, 6, 2)) \
         .groupby(partial(filter_groups, ["ipv4.src"]),
                  counter, "syns") \
-        .add_query(next_query) \
 
     fins: Query = Query(join_query2) \
         .epoch(epoch_dur, "eid") \
@@ -149,7 +150,6 @@ def completed_flows(next_query: Query = Query().continue_flow()) -> list[QueryMe
                  (packet.get_mapped_int("l4.flags") & 1) == 1)) \
         .groupby(partial(filter_groups, ["ipv4.src"]),
                  counter, "fins") \
-        .add_query(next_query) \
 
     return [
         syns.add_query(join_query1).collect(),
@@ -162,7 +162,7 @@ t2: int = 500
 t3: int = 90
 
 
-def slowloris(next_query: Query = Query().continue_flow()) -> list[QueryMethods]:
+def slowloris(end_query: Query) -> list[Query.Operator]:
 
     n_conns: Query = Query() \
         .epoch(epoch_dur, "eid") \
@@ -174,7 +174,6 @@ def slowloris(next_query: Query = Query().continue_flow()) -> list[QueryMethods]
                  counter, "n_conns") \
         .filter(lambda packet:
                 packet.get_mapped_int("n_conns") >= t1) \
-        .add_query(next_query) \
 
     n_bytes: Query = Query() \
         .epoch(epoch_dur, "eid") \
@@ -184,9 +183,8 @@ def slowloris(next_query: Query = Query().continue_flow()) -> list[QueryMethods]
                  partial(sum_ints, "ipv4.len"), "n_bytes") \
         .filter(lambda packet:
                 packet.get_mapped_int("n_bytes") >= t2) \
-        .add_query(next_query)
 
-    join_queries: BranchedQuery[Query, Query] = Query() \
+    join_queries: BranchedQuery = Query() \
         .join((lambda packet:
                (filter_groups(["n_conns"], packet),
                    filter_groups(["n_conns"], packet))),
@@ -195,12 +193,12 @@ def slowloris(next_query: Query = Query().continue_flow()) -> list[QueryMethods]
                    filter_groups(["n_bytes"], packet)))) \
         .map((lambda packet:
               packet.__setitem__
-              ("bytes_per_conn", Op_result(Op_result.INT,
-                                           packet.get_mapped_int("n_bytes") -
-                                           packet.get_mapped_int("n_conns"))))) \
+              ("bytes_per_conn", Int(
+                  packet.get_mapped_int("n_bytes") -
+                  packet.get_mapped_int("n_conns"))))) \
         .filter(lambda packet:
                 packet.get_mapped_int("bytes_per_conn") <= t3) \
-        .add_query(next_query) \
+        .add_query(end_query) \
         .collect()
     join_query1, join_query2 = join_queries
 
@@ -210,68 +208,74 @@ def slowloris(next_query: Query = Query().continue_flow()) -> list[QueryMethods]
     ]
 
 
-def create_join_operator_test(next_query: Query = Query().continue_flow()) -> list[QueryMethods]:
+def join_test(end_query: Query) -> list[Query.Operator]:
     epoch_dur: float = 1.0
 
     syns: Query = Query() \
         .epoch(epoch_dur, "eid") \
         .filter(partial(filter_helper, 6, 2)) \
-        .add_query(next_query)
+        .collect()
 
     synacks: Query = Query() \
         .epoch(epoch_dur, "eid") \
         .filter(partial(filter_helper, 6, 18)) \
-        .add_query(next_query)
+        .collect()
 
     join_queries: BranchedQuery = Query() \
         .join((lambda packet: (rename_filtered_keys([("ipv4.src", "host")], packet),
                                (rename_filtered_keys([("ipv4.dst", "remote")], packet)))),
               (lambda packet: ((rename_filtered_keys([("ipv4.dst", "host")], packet)),
                                (filter_groups(["time"], packet))))) \
-        .add_query(next_query) \
+        .add_query(end_query) \
         .collect()
     join_query1, join_query2 = join_queries
 
     return [
-        syns.add_query(join_query1),
-        synacks.add_query(join_query2)
+        syns.add_query(join_query1).collect(),
+        synacks.add_query(join_query2).collect()
     ]
 
 
-q3: Callable[[Query], QueryMethods] = lambda next_query=Query.dump(): Query() \
+q3: Query = Query() \
     .epoch(100.0, "eid") \
     .distinct(partial(filter_groups, ["ipv4.src", "ipv4.dst"])) \
-    .add_query(next_query) \
     .collect()
 
-q4: Callable[[Query], QueryMethods] = lambda next_query=Query.dump(): Query() \
+
+q4: Query = Query() \
     .epoch(10000.0, "eid") \
     .groupby(partial(filter_groups, ["ipv4.dst"]),
              counter, "pkts") \
-    .add_query(next_query) \
     .collect()
 
 
-queries: list[QueryMethods] = [Query().dump_as_csv(stdout).collect()]
+end: Query = Query().dump().collect()
+
+queries: list[Query.Operator] = [*join_test(end)]
 
 
 def run_queries() -> None:
-    [[query.next(packet) for query in queries] for packet in [PacketHeaders({
-        "time": Op_result(Op_result.FLOAT, (0.000000 + cast(float, i))),
-        "eth.src": Op_result(Op_result.MAC,
-                             (bytearray(b"\x00\x11\x22\x33\x44\x55"))),
-        "eth.dst": Op_result(Op_result.MAC,
-                             (bytearray(b"\xAA\xBB\xCC\xDD\xEE\xFF"))),
-        "eth.ethertype": Op_result(Op_result.INT, 0x0800),
-        "ipv4.hlen": Op_result(Op_result.INT, 20),
-        "ipv4.proto": Op_result(Op_result.INT, 6),
-        "ipv4.len": Op_result(Op_result.INT, 60),
-        "ipv4.src": Op_result(Op_result.IPV4, IPv4Address("127.0.0.1")),
-        "ipv4.dst": Op_result(Op_result.IPV4,  IPv4Address("127.0.0.1")),
-        "l4.sport": Op_result(Op_result.INT, 440),
-        "l4.dport": Op_result(Op_result.INT, 50000),
-        "l4.flags": Op_result(Op_result.INT, 10),
-    }) for i in range(20)]]
+    packets = [
+        PacketHeaders({
+            "time": Float(0.0 + cast(float, i)),
+            "eth.src": MAC(bytearray(b"\x00\x11\x22\x33\x44\x55")),
+            "eth.dst": MAC(bytearray(b"\xAA\xBB\xCC\xDD\xEE\xFF")),
+            "eth.ethertype": Int(0x0800),
+            "ipv4.hlen": Int(20),
+            "ipv4.proto": Int(6),
+            "ipv4.len": Int(60),
+            "ipv4.src": Ipv4(IPv4Address("127.0.0.1")),
+            "ipv4.dst": Ipv4(IPv4Address("127.0.0.1")),
+            "l4.sport": Int(440),
+            "l4.dport": Int(50000),
+            "l4.flags": Int(10)
+        })
+        for i in range(5)
+    ]
+
+    for packet in packets:
+        for query in queries:
+            query.reset(packet)
 
 
 def main():
