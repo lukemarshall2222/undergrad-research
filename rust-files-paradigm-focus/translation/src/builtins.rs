@@ -13,6 +13,7 @@ use std::rc::Rc;
 use std::str::FromStr;
 
 type OpCreator = Rc<RefCell<Box<dyn FnMut(Rc<RefCell<Operator>>) -> OperatorRef + 'static>>>;
+pub type FilterFunc = Box<dyn Fn(&Headers) -> bool>;
 
 struct Query {
     ops: Vec<OpCreator>,
@@ -183,6 +184,80 @@ impl Query {
         self.ops.push(creator_func);
         self
     }
+
+    pub fn create_epoch_operator(
+        mut self,
+        epoch_width: f64,
+        key_out: String,
+    ) -> Self {
+        let mut _epoch_boundary: f64 = 0.0;
+        let mut eid: i32 = 0;
+
+        let creator_func: OpCreator = Rc::new(RefCell::new(Box::new(move |next_op: OperatorRef| {
+            let next_op_clone_next = Rc::clone(&next_op);
+            let next_op_clone_reset = Rc::clone(&next_op);
+            let key_out_cp_next = key_out.clone();
+            let key_out_cp_reset = key_out.clone();
+
+            let next: Box<dyn FnMut(&mut Headers) + 'static> =
+                Box::new(move |headers: &mut Headers| {
+                    let time: f64 =
+                        float_of_op_result(&headers.get("time").unwrap_or(&OpResult::Empty))
+                            .unwrap()
+                            .0;
+                    if _epoch_boundary == 0.0 {
+                        _epoch_boundary = time + epoch_width;
+                    }
+                    while time >= _epoch_boundary {
+                        let new_headers: &mut Headers = headers;
+                        new_headers
+                            .insert(key_out_cp_next.clone(), OpResult::Int(eid)) // Use cloned value
+                            .unwrap();
+                        (next_op_clone_next.borrow_mut().reset)(new_headers);
+                        _epoch_boundary += epoch_width;
+                        eid += 1;
+                    }
+                    headers
+                        .insert(key_out_cp_next.clone(), OpResult::Int(eid)) // Use cloned value
+                        .unwrap();
+                    (next_op_clone_next.borrow_mut().next)(headers)
+                });
+
+            let reset: Box<dyn FnMut(&mut Headers) + 'static> =
+                Box::new(move |_headers: &mut Headers| {
+                    let mut new_hmap: BTreeMap<String, OpResult> = BTreeMap::new();
+                    new_hmap.insert(key_out_cp_reset.clone(), OpResult::Int(eid)); // Use cloned value
+                    (next_op_clone_reset.borrow_mut().reset)(&mut Headers::new());
+                    _epoch_boundary = 0.0;
+                    eid = 0;
+                });
+
+            Rc::new(RefCell::new(Operator::new(next, reset)))
+        })));
+        self.ops.push(creator_func);
+        self
+    }
+
+    pub fn create_filter_operator(mut self, f: FilterFunc) -> Self {
+        let f_cp = Rc::new(RefCell::new(f));
+        let creator_func: OpCreator = Rc::new(RefCell::new(Box::new(move |next_op: OperatorRef| {
+            let next_op_ref_clone = Rc::clone(&next_op);
+            let f_ref_clone = Rc::clone(&f_cp);
+            let next: Box<dyn FnMut(&mut Headers) + 'static> =
+                Box::new(move |headers: &mut Headers| {
+                    if (f_ref_clone.borrow_mut())(headers) {
+                        (next_op_ref_clone.borrow_mut().next)(headers)
+                    }
+                });
+
+            let reset: Box<dyn FnMut(&mut Headers) + 'static> =
+                Box::new(move |headers: &mut Headers| (next_op.borrow_mut().reset)(headers));
+
+            Rc::new(RefCell::new(Operator::new(next, reset)))
+        })));
+        self.ops.push(creator_func);
+        self
+    }
 }
 
 pub fn get_ip_or_zero(input: String) -> OpResult {
@@ -190,69 +265,6 @@ pub fn get_ip_or_zero(input: String) -> OpResult {
         z if z == "0" => OpResult::Int(0),
         catchall => OpResult::IPv4(Ipv4Addr::from_str(&catchall).unwrap()),
     }
-}
-
-
-pub fn create_epoch_operator(
-    epoch_width: f64,
-    key_out: String,
-    next_op: OperatorRef,
-) -> OperatorRef {
-    let mut _epoch_boundary: f64 = 0.0;
-    let mut eid: i32 = 0;
-    let key_out_cp: String = (*key_out).to_string();
-    let next_op_ref = Rc::clone(&next_op);
-
-    let next: Box<dyn FnMut(&mut Headers) + 'static> = Box::new(move |headers: &mut Headers| {
-        let time: f64 = float_of_op_result(&headers.get("time").unwrap_or(&OpResult::Empty))
-            .unwrap()
-            .0;
-        if _epoch_boundary == 0.0 {
-            _epoch_boundary = time + epoch_width;
-        }
-        while time >= _epoch_boundary {
-            let new_headers: &mut Headers = headers;
-            new_headers
-                .insert(key_out.clone(), OpResult::Int(eid))
-                .unwrap();
-            (next_op.borrow_mut().reset)(new_headers);
-            _epoch_boundary += epoch_width;
-            eid += 1;
-        }
-        headers.insert(key_out.clone(), OpResult::Int(eid)).unwrap();
-        (next_op.borrow_mut().next)(headers)
-    });
-
-    let reset: Box<dyn FnMut(&mut Headers) + 'static> = Box::new(move |_headers: &mut Headers| {
-        let mut new_hmap: BTreeMap<String, OpResult> = BTreeMap::new();
-        new_hmap.insert(key_out_cp.clone(), OpResult::Int(eid));
-        (next_op_ref.borrow_mut().reset)(&mut Headers::new());
-        _epoch_boundary = 0.0;
-        eid = 0;
-    });
-
-    Rc::new(RefCell::new(Operator::new(next, reset)))
-}
-
-pub type FilterFunc = Box<dyn Fn(&Headers) -> bool>;
-
-pub fn create_filter_operator(f: FilterFunc, next_op: OperatorRef) -> OperatorRef {
-    let next_op_ref_clone = Rc::clone(&next_op);
-
-    let next: Box<dyn FnMut(&mut Headers) + 'static> = Box::new(move |headers: &mut Headers| {
-        if (f)(headers) {
-            (next_op_ref_clone.borrow_mut().next)(headers)
-        }
-    });
-
-    let reset: Box<dyn FnMut(&mut Headers) + 'static> =
-        Box::new(move |headers: &mut Headers| (next_op.borrow_mut().reset)(headers));
-
-    Rc::new(RefCell::new(Operator::new(next, reset)))
-}
-
-pub fn key_geq_int(key: String, threshold: i32, headers: &Headers) -> bool {
-    int_of_op_result(headers.get(&key).unwrap_or(&OpResult::Empty)).unwrap() >= threshold
 }
 
 pub fn create_map_operator(
