@@ -129,9 +129,9 @@ def completed_flows(end_query) -> list[Query.Operator]:
                    filter_groups(["fins"], packet)))) \
         .map((lambda packet:
               packet.__setitem__
-              ("diff", Op_result(Op_result.INT,
-                                 packet.get_mapped_int("syns") -
-                                 packet.get_mapped_int("fins"))))) \
+              ("diff", Int(
+                  packet.get_mapped_int("syns") -
+                  packet.get_mapped_int("fins"))))) \
         .filter(partial(key_geq_int, "diff", threshold-39)) \
         .add_query(end_query) \
         .collect()
