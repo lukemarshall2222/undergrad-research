@@ -1,1 +1,0 @@
-dyn FnOnce(utils::Operator) -> Result<(utils::Operator, utils::Operator), utils::Error>
