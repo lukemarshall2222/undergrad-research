@@ -1,0 +1,1 @@
+g++ -std=c++17 -O3 types.cpp operators.cpp advanced_operators.cpp network_queries.cpp main.cpp -o network_analyzer

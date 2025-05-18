@@ -31,6 +31,11 @@ pub struct Query {
     end_op: Option<OperatorRef>,
 }
 
+pub enum QueryKind {
+    Query(Query),
+    Op(OpKind),
+}
+
 impl Query {
     pub fn new(middle_op: Option<OpKind>, end_op: Option<OperatorRef>) -> Self {
         let mut ops: Vec<OpKind> = Vec::new();
@@ -39,6 +44,56 @@ impl Query {
         }
 
         Query { ops, end_op }
+    }
+
+    pub fn collect(mut self) -> Result<QueryKind, Error> {
+        if self.is_empty() {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "This query is empty, cannot collect on an empty query",
+            ));
+        }
+
+        if self.end_op.is_none() || self.ops.len() == 0 {
+            return Ok(QueryKind::Query(self));
+        }
+
+        let mut curr_op: OperatorRef = self.end_op.unwrap();
+        let mut join_res: Option<OpPair> = None;
+        for op in self.ops.iter_mut().rev() {
+            match op {
+                OpKind::OpCreator(op_func) => {
+                    curr_op = op_func.borrow_mut()(curr_op.clone());
+                }
+                OpKind::DblOpCreator(op_func) => {
+                    join_res = Some(op_func.borrow_mut()(curr_op.clone()));
+                }
+                OpKind::DblOpAcceptor(op_func) => {
+                    if join_res.is_some() {
+                        curr_op = op_func.borrow_mut()(join_res.take().unwrap());
+                    } else {
+                        return Err(Error::new(
+                            ErrorKind::InvalidInput,
+                            "Must call split method immediately after join if piping 
+                            the result of join into another set of operations",
+                        ));
+                    }
+                }
+            }
+        }
+        Ok(QueryKind::Query(Query::new(None, None)))
+    }
+
+    pub fn add_query(mut self, other: Query) -> Self {
+        self.ops.extend(other.ops);
+        if let Some(op_ref) = other.end_op {
+            self.end_op = Some(op_ref);
+        }
+        self
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.ops.len() == 0 && self.end_op.is_none()
     }
 
     pub fn create_dump_operator(mut self, show_reset: bool, outc: Box<dyn Write>) -> Self {

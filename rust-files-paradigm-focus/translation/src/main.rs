@@ -2,45 +2,31 @@
 
 // use std::{cell::RefCell, io::stdout, rc::Rc};
 
-use builtins::{
-    OpCreator, Query
-};
-use utils::Operator;
+use std::io::Error;
+
+use builtins::{OpCreator, OpKind, Query, QueryKind};
+use utils::{Headers, Operator, OperatorRef};
 // use ordered_float::OrderedFloat;
 // use utils::{Headers, OpResult, OperatorRef};
 
 mod builtins;
 mod utils;
 
-// fn ident(next_op: OperatorRef) -> OperatorRef {
-//     create_map_operator(
-//         Box::new(move |mut headers: Headers| {
-//             headers.remove("eth.src".to_string());
-//             headers.remove("eth.dst".to_string());
-//             headers
-//         }),
-//         next_op,
-//     )
-// }
+type QueryCreator = Box<dyn Fn(OperatorRef) -> Result<QueryKind, Error> + 'static>;
 
-
-
-
-const ident: OpCreator = Box::new(move |next_op: Operator| {
-    let f = Box::new(move |mut headers: Headers| {
+fn ident() -> QueryCreator {
+    Box::new(move |next_op: OperatorRef| {
+        let f = Box::new(move |mut headers: Headers| {
             headers.remove("eth.src".to_string());
             headers.remove("eth.dst".to_string());
             headers
         });
-    Query::new().create_map_operator(f)
-});
-
-
-
-
-
-
-
+        Query::new(None, None)
+            .create_map_operator(f)
+            .add_query(Query::new(None, Some(next_op)))
+            .collect()
+    })
+}
 
 // fn count_pkts(next_op: OperatorRef) -> OperatorRef {
 //     let incl_keys = Vec::from(["ipv4.src".to_string(), "ipv4.dst".to_string()]);
@@ -700,7 +686,7 @@ const ident: OpCreator = Box::new(move |next_op: Operator| {
 //     )
 // }
 
-// fn create_query() -> OperatorRef { 
+// fn create_query() -> OperatorRef {
 //     ident(Rc::new(RefCell::new(dump_as_csv(None, Some(false), Box::new(stdout())))))
 // }
 
