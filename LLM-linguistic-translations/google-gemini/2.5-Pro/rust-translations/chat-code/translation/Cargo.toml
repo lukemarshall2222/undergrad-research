@@ -1,0 +1,9 @@
+[package]
+name = "translation"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+[dependencies]
+# chrono = "0.4" # Optional, if more advanced time features are needed
+# csv = "1.1"   # Optional, for robust CSV handling
