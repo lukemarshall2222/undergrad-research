@@ -14,7 +14,6 @@
 #include <fstream>
 
 #include <arpa/inet.h>
-#include <netinet/ether.h>
 
 namespace OcamlInterop {
 

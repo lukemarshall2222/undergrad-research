@@ -1,7 +1,8 @@
 #![allow(dead_code)]
 
 use crate::utils::{
-    Headers, OpResult, Operator, OperatorRef, dump_headers, float_of_op_result, string_of_op_result,
+    Headers, OpResult, Operator, OperatorRef, dump_headers, float_of_op_result, int_of_op_result,
+    string_of_op_result,
 };
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
@@ -34,6 +35,7 @@ pub struct Query {
 pub enum QueryKind {
     Query(Query),
     Op(OpKind),
+    OpPair(OpPair),
 }
 
 impl Query {
@@ -81,7 +83,10 @@ impl Query {
                 }
             }
         }
-        Ok(QueryKind::Query(Query::new(None, None)))
+        if let Some(join_op) = join_res {
+            return Ok(QueryKind::OpPair(join_op));
+        }
+        Ok(QueryKind::Query(Query::new(None, Some(curr_op))))
     }
 
     pub fn add_query(mut self, other: Query) -> Self {
@@ -197,7 +202,7 @@ impl Query {
         self
     }
 
-    pub fn create_meta_meter(
+    pub fn meta_meter(
         mut self,
         static_field: Option<String>,
         name: String,
@@ -251,7 +256,7 @@ impl Query {
         self
     }
 
-    pub fn create_epoch_operator(mut self, epoch_width: f64, key_out: String) -> Self {
+    pub fn epoch(mut self, epoch_width: f64, key_out: String) -> Self {
         let mut _epoch_boundary: f64 = 0.0;
         let mut eid: i32 = 0;
 
@@ -301,7 +306,7 @@ impl Query {
         self
     }
 
-    pub fn create_filter_operator(mut self, f: FilterFunc) -> Self {
+    pub fn filter(mut self, f: FilterFunc) -> Self {
         let f_cp = Rc::new(RefCell::new(f));
         let creator_func: OpCreator =
             Rc::new(RefCell::new(Box::new(move |next_op: OperatorRef| {
@@ -323,7 +328,7 @@ impl Query {
         self
     }
 
-    pub fn create_map_operator(mut self, f: Box<dyn Fn(Headers) -> Headers + 'static>) -> Self {
+    pub fn map(mut self, f: Box<dyn Fn(Headers) -> Headers + 'static>) -> Self {
         let f = Rc::new(RefCell::new(f));
         let creator_func: OpCreator =
             Rc::new(RefCell::new(Box::new(move |next_op: OperatorRef| {
@@ -354,7 +359,7 @@ impl Query {
         self
     }
 
-    pub fn create_groupby_operator(
+    pub fn groupby(
         mut self,
         groupby: GroupingFunc,
         reduce: ReductionFunc,
@@ -409,7 +414,7 @@ impl Query {
         self
     }
 
-    pub fn create_distinct_operator(mut self, groupby: GroupingFunc) -> Self {
+    pub fn distinct(mut self, groupby: GroupingFunc) -> Self {
         let groupby_ref = Rc::new(RefCell::new(groupby));
         let creator_func: OpCreator =
             Rc::new(RefCell::new(Box::new(move |next_op: OperatorRef| {
@@ -449,7 +454,7 @@ impl Query {
         self
     }
 
-    pub fn create_split_operator(mut self) -> Self {
+    pub fn split(mut self) -> Self {
         let creator_func: DblOpAcceptor = Rc::new(RefCell::new(Box::new(move |(l, r)| {
             let l_ref_clone = Rc::clone(&l);
             let r_ref_clone = Rc::clone(&r);
@@ -472,7 +477,7 @@ impl Query {
         self
     }
 
-    pub fn create_join_operator(
+    pub fn join(
         mut self,
         eid_key: Option<String>,
         left_extractor: KeyExtractor,
@@ -613,6 +618,9 @@ impl Query {
         self.ops.push(OpKind::DblOpCreator(creator_func));
         self
     }
+}
+pub fn key_geq_int(key: String, threshold: i32, headers: &Headers) -> bool {
+    int_of_op_result(headers.get(&key).unwrap_or(&OpResult::Empty)).unwrap() >= threshold
 }
 
 pub fn get_ip_or_zero(input: String) -> OpResult {

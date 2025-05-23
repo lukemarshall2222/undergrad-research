@@ -6,6 +6,9 @@ from typing import cast
 epoch_dur: float = 5.0
 threshold: int = 40
 
+def remove_keys(headers: PacketHeaders) -> PacketHeaders:
+    return PacketHeaders({key: val for key, val in headers.items()
+                          if key != "eth.src" and key != "eth.dst"})
 ident: Query = Query()\
     .map(remove_keys) \
     .collect()
