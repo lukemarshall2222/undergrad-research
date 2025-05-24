@@ -6,8 +6,9 @@ use crate::utils::{
 };
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
+use std::error::Error;
 use std::fs::File;
-use std::io::{Error, ErrorKind, Write, stdout};
+use std::io::{Write, stdout};
 use std::net::Ipv4Addr;
 use std::rc::Rc;
 use std::str::FromStr;
@@ -25,6 +26,7 @@ pub enum OpKind {
     OpCreator(OpCreator),
     DblOpAcceptor(DblOpAcceptor),
     DblOpCreator(DblOpCreator),
+    Operator(OperatorRef),
 }
 
 pub struct Query {
@@ -48,12 +50,9 @@ impl Query {
         Query { ops, end_op }
     }
 
-    pub fn collect(mut self) -> Result<QueryKind, Error> {
+    pub fn collect(mut self) -> Result<QueryKind, Box<dyn Error>> {
         if self.is_empty() {
-            return Err(Error::new(
-                ErrorKind::InvalidInput,
-                "This query is empty, cannot collect on an empty query",
-            ));
+            return Err("This query is empty, cannot collect on an empty query".into());
         }
 
         if self.end_op.is_none() || self.ops.len() == 0 {
@@ -74,19 +73,19 @@ impl Query {
                     if join_res.is_some() {
                         curr_op = op_func.borrow_mut()(join_res.take().unwrap());
                     } else {
-                        return Err(Error::new(
-                            ErrorKind::InvalidInput,
-                            "Must call split method immediately after join if piping 
-                            the result of join into another set of operations",
-                        ));
+                        return Err("Must call split method immediately after join if piping 
+                            the result of join into another set of operations"
+                            .into());
                     }
                 }
+                _ => return Err("There is an operator in the ops list of a collected query".into()),
             }
         }
         if let Some(join_op) = join_res {
-            return Ok(QueryKind::OpPair(join_op));
+            Ok(QueryKind::OpPair(join_op))
+        } else {
+            Ok(QueryKind::Op(OpKind::Operator(curr_op)))
         }
-        Ok(QueryKind::Query(Query::new(None, Some(curr_op))))
     }
 
     pub fn add_query(mut self, other: Query) -> Self {
@@ -670,16 +669,14 @@ pub fn sum_ints(
     search_key: String,
     init_val: OpResult,
     headers: &mut Headers,
-) -> Result<OpResult, Error> {
+) -> Result<OpResult, Box<dyn Error>> {
     match init_val {
         OpResult::Empty => Ok(OpResult::Int(1)),
         OpResult::Int(i) => match headers.headers.get_mut(&search_key) {
             Some(OpResult::Int(n)) => Ok(OpResult::Int(*n + i)),
-            _ => Err(Error::new(
-                ErrorKind::InvalidInput,
-                "'sum_vals' function failed to find integer 
-                        value mapped to the incorrect type",
-            )),
+            _ => Err("'sum_vals' function failed to find integer 
+                        value mapped to the incorrect type"
+                .into()),
         },
         _ => Ok(init_val),
     }
